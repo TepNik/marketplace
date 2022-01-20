@@ -90,8 +90,6 @@ contract NftMarketplace is AccessControlEnumerable {
         }
     }
 
-    event Test(SignatureInfo);
-
     function makeSwap(
         SignatureInfo calldata signatureInfoSeller,
         bytes calldata sellerSignature,
@@ -100,7 +98,6 @@ contract NftMarketplace is AccessControlEnumerable {
         require(!isPaused, "NftMarketplace: Swaps paused");
 
         _verifySignature(signatureInfoSeller, sellerSignature, sellerAddress);
-        emit Test(signatureInfoSeller);
 
         _verifyToken(signatureInfoSeller.tokenToGet);
         _verifyToken(signatureInfoSeller.tokenToGive);
@@ -122,9 +119,6 @@ contract NftMarketplace is AccessControlEnumerable {
         _tokenTransfer(signatureInfoSeller.tokenToGive, sellerAddress, msg.sender);
         _tokenTransfer(signatureInfoSeller.tokenToGet, msg.sender, sellerAddress);
     }
-
-    event Encoded(bytes);
-    event Hash(bytes32);
 
     function _verifySignature(
         SignatureInfo memory signatureInfoSeller,
