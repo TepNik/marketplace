@@ -1,13 +1,13 @@
 const hre = require("hardhat");
 
 const config = require("../config.js");
-const utils = require("./utils")
+const utils = require("./utils");
 
 async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deployer address:", deployer.address);
 
-    await utils.deployAndVerify("Token", [config.initialSupply])
+    await utils.deployAndVerify("Token", [config.initialSupply]);
 }
 
 main()

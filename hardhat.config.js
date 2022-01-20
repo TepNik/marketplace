@@ -75,7 +75,7 @@ module.exports = {
     solidity: {
         compilers: [
             {
-                version: "0.8.4",
+                version: "0.8.11",
                 settings: {
                     optimizer: {
                         enabled: true,
@@ -83,24 +83,6 @@ module.exports = {
                     },
                 },
             },
-            /* {
-                version: "0.7.6",
-                settings: {
-                    optimizer: {
-                        enabled: true,
-                        runs: 999999,
-                    },
-                },
-            },
-            {
-                version: "0.6.12",
-                settings: {
-                    optimizer: {
-                        enabled: true,
-                        runs: 999999,
-                    },
-                },
-            }, */
         ],
     },
     mocha: {
@@ -108,7 +90,7 @@ module.exports = {
     },
     contractSizer: {
         alphaSort: true,
-        runOnCompile: true,
+        runOnCompile: false,
         disambiguatePaths: false,
     },
     gasReporter: {
@@ -119,7 +101,8 @@ module.exports = {
         path: "./data/abi",
         clear: true,
         flat: true,
-        spacing: 2,
+        spacing: 4,
+        runOnCompile: true,
     },
     spdxLicenseIdentifier: {
         overwrite: false,

@@ -1,6 +1,5 @@
-
 const deployAndVerify = async (contractName, arguments) => {
-	const Contract = await hre.ethers.getContractFactory(contractName);
+    const Contract = await hre.ethers.getContractFactory(contractName);
 
     console.log("Deploying Contact...");
     const contract = await Contract.deploy(...arguments);
@@ -19,9 +18,8 @@ const deployAndVerify = async (contractName, arguments) => {
         });
         console.log("Contract is Verified");
     }
-
-}
+};
 
 module.exports = {
-	deployAndVerify
-}
+    deployAndVerify,
+};

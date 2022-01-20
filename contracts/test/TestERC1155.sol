@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: UNLICENSED
+
+pragma solidity 0.8.11;
+
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+
+contract TestERC1155 is ERC1155("") {
+    function mint(uint256 id, uint256 amount) external {
+        _mint(msg.sender, id, amount, "");
+    }
+}
