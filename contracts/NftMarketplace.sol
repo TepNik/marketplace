@@ -43,6 +43,8 @@ contract NftMarketplace is AccessControlEnumerable {
         bytes32 orderId;
     }
 
+    event SwapMade(SignatureInfo signatureInfo, address indexed seller, address indexed buyer);
+
     event FeePercentageChange(address indexed manager, uint256 oldValue, uint256 newValue);
     event FeeReceiverChange(address indexed manager, address oldValue, address newValue);
 
@@ -118,6 +120,8 @@ contract NftMarketplace is AccessControlEnumerable {
 
         _tokenTransfer(signatureInfoSeller.tokenToGive, sellerAddress, msg.sender);
         _tokenTransfer(signatureInfoSeller.tokenToGet, msg.sender, sellerAddress);
+
+        emit SwapMade(signatureInfoSeller, sellerAddress, msg.sender);
     }
 
     function _verifySignature(

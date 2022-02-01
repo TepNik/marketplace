@@ -7,7 +7,7 @@ const BN = ethers.BigNumber;
 const Decimals = BN.from(18);
 const OneToken = BN.from(10).pow(Decimals);
 
-describe("Token test", function () {
+describe("NFT Marketplace tests", function () {
     let tokenInst;
     let erc721Inst;
     let erc1155Inst;

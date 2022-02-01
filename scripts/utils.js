@@ -1,7 +1,7 @@
 const deployAndVerify = async (contractName, arguments) => {
     const Contract = await hre.ethers.getContractFactory(contractName);
 
-    console.log("Deploying Contact...");
+    console.log(`Deploying ${contractName}...`);
     const contract = await Contract.deploy(...arguments);
     console.log(`${contractName} deployed to: ${contract.address}`);
 
