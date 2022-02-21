@@ -103,7 +103,7 @@ module.exports = {
         flat: true,
         spacing: 4,
         runOnCompile: true,
-        pretty: false
+        pretty: false,
     },
     spdxLicenseIdentifier: {
         overwrite: false,
