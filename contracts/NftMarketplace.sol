@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity 0.8.11;
+pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
@@ -166,7 +166,10 @@ contract NftMarketplace is RoyaltiesInfo {
             "NftMarketplace: Wrong marketplace"
         );
         require(block.timestamp <= signatureInfoSeller.deadline, "NftMarketplace: Deadline error");
-        require(signatureInfoSeller.user == sellerAddress, "NftMarketplace: Wrong user in signature info");
+        require(
+            signatureInfoSeller.user == sellerAddress,
+            "NftMarketplace: Wrong user in signature info"
+        );
         bytes memory encodedData = abi.encode(signatureInfoSeller);
         orderId = keccak256(encodedData);
         require(

@@ -18,6 +18,8 @@ const deployAndVerify = async (contractName, arguments) => {
         });
         console.log("Contract is Verified");
     }
+
+    return contract.address;
 };
 
 module.exports = {

@@ -7,3 +7,5 @@ coverage.json
 flattened
 data
 signature.js
+.env
+process_transaction.js
