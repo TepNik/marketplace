@@ -27,6 +27,8 @@ require("@nomiclabs/hardhat-solhint");
 // command: npx hardhat test --logs
 require("hardhat-tracer");
 
+require("@nomiclabs/hardhat-web3");
+
 let config = require("./config.js");
 
 module.exports = {
@@ -75,7 +77,7 @@ module.exports = {
     solidity: {
         compilers: [
             {
-                version: "0.8.12",
+                version: "0.8.13",
                 settings: {
                     optimizer: {
                         enabled: true,
@@ -96,6 +98,7 @@ module.exports = {
     gasReporter: {
         currency: "USD",
         coinmarketcap: config.coinmarketcapApi,
+        token: "BNB",
     },
     abiExporter: {
         path: "./data/abi",

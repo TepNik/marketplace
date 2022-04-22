@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity 0.8.12;
+pragma solidity 0.8.13;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
@@ -21,10 +21,14 @@ contract NftMarketplace is RoyaltiesInfo {
 
     mapping(bytes32 => bool) public isOrderComplited;
 
+    address public immutable wNative;
+
     uint256 public feePercentage = 2_50; // 2.5%
     address public feeReceiver;
 
     bool public isPaused;
+
+    uint256 private constant MAX_GAS_FOR_NATIVE_TRANSFER = 200_000;
 
     enum TokenType {
         ERC20,
@@ -67,9 +71,11 @@ contract NftMarketplace is RoyaltiesInfo {
     event SwapsPaused(address indexed manager);
     event SwapsUnpaused(address indexed manager);
 
-    constructor(address _feeReceiver) {
+    constructor(address _feeReceiver, address _wnative) {
         require(_feeReceiver != address(0), "NftMarketplace: Zero address");
         feeReceiver = _feeReceiver;
+
+        wNative = _wnative;
 
         emit FeePercentageChange(msg.sender, 0, feePercentage);
         emit FeeReceiverChange(msg.sender, address(0), _feeReceiver);
@@ -110,7 +116,7 @@ contract NftMarketplace is RoyaltiesInfo {
         SignatureInfo calldata signatureInfoSeller,
         bytes calldata sellerSignature,
         address sellerAddress
-    ) external {
+    ) external payable {
         require(!isPaused, "NftMarketplace: Swaps paused");
 
         bytes32 orderId = _verifySignature(signatureInfoSeller, sellerSignature, sellerAddress);
@@ -195,8 +201,6 @@ contract NftMarketplace is RoyaltiesInfo {
                 "NftMarketplace: ERC1155 type"
             );
             require(tokenInfo.amount > 0, "NftMarketplace: ERC1155 amount");
-        } else {
-            revert("NftMarketplace: Type error");
         }
     }
 
@@ -211,24 +215,53 @@ contract NftMarketplace is RoyaltiesInfo {
             uint256 feeAmount = (tokenInfo.amount * feePercentage) / 100_00;
             uint256 royaltyAmount = (tokenInfo.amount * royaltyPercentage) / 100_00;
 
-            IERC20(tokenInfo.tokenAddress).safeTransferFrom(
-                from,
-                to,
-                tokenInfo.amount - feeAmount - royaltyAmount
-            );
+            bool ifNative = from == msg.sender && tokenInfo.tokenAddress == wNative;
+            if (!ifNative) {
+                require(msg.value == 0, "NftMarketplace: Not zero tx value");
+            }
+            ifNative = ifNative && msg.value > 0;
+
+            if (ifNative) {
+                require(msg.value == tokenInfo.amount);
+                (bool success, ) = to.call{
+                    value: tokenInfo.amount - feeAmount - royaltyAmount,
+                    gas: MAX_GAS_FOR_NATIVE_TRANSFER
+                }("");
+                require(success, "NftMarketplace: Transfer native to seller");
+            } else {
+                IERC20(tokenInfo.tokenAddress).safeTransferFrom(
+                    from,
+                    to,
+                    tokenInfo.amount - feeAmount - royaltyAmount
+                );
+            }
 
             if (feeAmount > 0) {
                 address _feeReceiver = feeReceiver;
-                IERC20(tokenInfo.tokenAddress).safeTransferFrom(from, _feeReceiver, feeAmount);
+
+                if (ifNative) {
+                    (bool success, ) = _feeReceiver.call{value: feeAmount}("");
+                    require(success, "NftMarketplace: Transfer native to feeReceiver");
+                } else {
+                    IERC20(tokenInfo.tokenAddress).safeTransferFrom(from, _feeReceiver, feeAmount);
+                }
 
                 emit FeeTransferred(_feeReceiver, tokenInfo.tokenAddress, feeAmount);
             }
             if (royaltyAmount > 0 && royaltyReceiver != address(0)) {
-                IERC20(tokenInfo.tokenAddress).safeTransferFrom(
-                    from,
-                    royaltyReceiver,
-                    royaltyAmount
-                );
+                if (ifNative) {
+                    (bool success, ) = royaltyReceiver.call{
+                        value: royaltyAmount,
+                        gas: MAX_GAS_FOR_NATIVE_TRANSFER
+                    }("");
+                    require(success, "NftMarketplace: Transfer native to royaltyReceiver");
+                } else {
+                    IERC20(tokenInfo.tokenAddress).safeTransferFrom(
+                        from,
+                        royaltyReceiver,
+                        royaltyAmount
+                    );
+                }
 
                 emit RoyaltyTransferred(royaltyReceiver, tokenInfo.tokenAddress, royaltyAmount);
             }
@@ -242,8 +275,6 @@ contract NftMarketplace is RoyaltiesInfo {
                 tokenInfo.amount,
                 ""
             );
-        } else {
-            revert("NftMarketplace: Type error");
         }
     }
 }

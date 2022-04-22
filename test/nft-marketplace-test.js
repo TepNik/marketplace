@@ -1,3 +1,4 @@
+const { snapshot } = require("@openzeppelin/test-helpers");
 const { expect } = require("chai");
 //const { ethers } = require("ethers");
 const { randomBytes } = require("crypto");
@@ -6,6 +7,7 @@ const BN = ethers.BigNumber;
 
 const Decimals = BN.from(18);
 const OneToken = BN.from(10).pow(Decimals);
+const OneEth = ethers.constants.WeiPerEther;
 
 describe("NFT Marketplace tests", function () {
     let tokenInst;
@@ -14,8 +16,10 @@ describe("NFT Marketplace tests", function () {
     let erc1155Inst;
     let erc1155OwnableInst;
 
+    let wNativeInst;
+
     let nftMarketplaceInst;
-    //let nftMarketplaceInterface;
+    //const nftMarketplaceInterface;
 
     let deployer;
     let feeReceiver;
@@ -55,8 +59,14 @@ describe("NFT Marketplace tests", function () {
         erc1155OwnableInst = await TestERC1155OwnableFactory.deploy();
         hre.tracer.nameTags[erc1155OwnableInst.address] = "erc1155OwnableInst";
 
+        wNativeInst = await TestERC20Factory.deploy();
+        hre.tracer.nameTags[wNativeInst.address] = "wNativeInst";
+
         const NftMarketplaceFactory = await ethers.getContractFactory("NftMarketplace");
-        nftMarketplaceInst = await NftMarketplaceFactory.deploy(feeReceiver.address);
+        nftMarketplaceInst = await NftMarketplaceFactory.deploy(
+            feeReceiver.address,
+            wNativeInst.address
+        );
         hre.tracer.nameTags[nftMarketplaceInst.address] = "nftMarketplaceInst";
 
         feePercentage = BN.from(await nftMarketplaceInst.feePercentage());
@@ -75,8 +85,8 @@ describe("NFT Marketplace tests", function () {
             const amountOfErc20 = OneToken.mul(10);
             const idOfErc721 = 1;
 
-            let sellerNft = user1;
-            let buyerNft = user2;
+            const sellerNft = user1;
+            const buyerNft = user2;
 
             await tokenInst.connect(buyerNft).mint(amountOfErc20);
             await tokenInst.connect(buyerNft).approve(nftMarketplaceInst.address, amountOfErc20);
@@ -99,7 +109,7 @@ describe("NFT Marketplace tests", function () {
                 .connect(buyerNft)
                 .makeSwap(signatureInfo, signature, sellerNft.address);
 
-            let feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
             expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
             expect(await tokenInst.balanceOf(sellerNft.address)).to.be.equals(
                 amountOfErc20.sub(feeAmount)
@@ -109,12 +119,86 @@ describe("NFT Marketplace tests", function () {
             expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
         });
 
+        it("Swap ERC721 to native", async () => {
+            const amountOfNative = OneEth;
+            const idOfErc721 = 1;
+
+            const sellerNft = user1;
+            const buyerNft = user2;
+
+            await wNativeInst.connect(buyerNft).mint(amountOfNative);
+            await wNativeInst.connect(buyerNft).approve(nftMarketplaceInst.address, amountOfNative);
+
+            await erc721Inst.connect(sellerNft).mint(idOfErc721);
+            await erc721Inst.connect(sellerNft).setApprovalForAll(nftMarketplaceInst.address, true);
+
+            const ethBalanceSellerBefore = await ethers.provider.getBalance(sellerNft.address);
+            const ethBalanceFeeReceiverBefore = await ethers.provider.getBalance(
+                feeReceiver.address
+            );
+
+            const deadline = timestampNow + 1000000;
+
+            const signatureInfo = [
+                nftMarketplaceInst.address,
+                sellerNft.address,
+                [0, wNativeInst.address, 0, amountOfNative],
+                [1, erc721Inst.address, idOfErc721, 0],
+                deadline,
+            ];
+            const [signature, orderId] = await signInfo(sellerNft, signatureInfo);
+
+            const snapshotBefore = await snapshot();
+
+            await nftMarketplaceInst
+                .connect(buyerNft)
+                .makeSwap(signatureInfo, signature, sellerNft.address);
+
+            let feeAmount = feePercentage.mul(amountOfNative).div(10000);
+            expect(await wNativeInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
+            expect(await wNativeInst.balanceOf(sellerNft.address)).to.be.equals(
+                amountOfNative.sub(feeAmount)
+            );
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
+
+            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+
+            await snapshotBefore.restore();
+
+            await nftMarketplaceInst
+                .connect(buyerNft)
+                .makeSwap(signatureInfo, signature, sellerNft.address, {
+                    value: amountOfNative,
+                });
+
+            const ethBalanceSellerAfter = await ethers.provider.getBalance(sellerNft.address);
+            const ethBalanceFeeReceiverAfter = await ethers.provider.getBalance(
+                feeReceiver.address
+            );
+
+            feeAmount = feePercentage.mul(amountOfNative).div(10000);
+            expect(await wNativeInst.balanceOf(feeReceiver.address)).to.be.equals(0);
+            expect(await wNativeInst.balanceOf(sellerNft.address)).to.be.equals(0);
+            expect(await wNativeInst.balanceOf(buyerNft.address)).to.be.equals(amountOfNative);
+
+            expect(ethBalanceSellerAfter.sub(ethBalanceSellerBefore)).to.be.equals(
+                amountOfNative.sub(feeAmount)
+            );
+            expect(ethBalanceFeeReceiverAfter.sub(ethBalanceFeeReceiverBefore)).to.be.equals(
+                feeAmount
+            );
+
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
+
+            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+        });
+
         it("Swap ERC20 to ERC721", async () => {
             const amountOfErc20 = OneToken.mul(10);
             const idOfErc721 = 1;
 
-            let sellerErc20 = user1;
-            let buyerErc20 = user2;
+            const sellerErc20 = user1;
+            const buyerErc20 = user2;
 
             await tokenInst.connect(sellerErc20).mint(amountOfErc20);
             await tokenInst.connect(sellerErc20).approve(nftMarketplaceInst.address, amountOfErc20);
@@ -139,7 +223,7 @@ describe("NFT Marketplace tests", function () {
                 .connect(buyerErc20)
                 .makeSwap(signatureInfo, signature, sellerErc20.address);
 
-            let feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
             expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
             expect(await tokenInst.balanceOf(buyerErc20.address)).to.be.equals(
                 amountOfErc20.sub(feeAmount)
@@ -154,8 +238,8 @@ describe("NFT Marketplace tests", function () {
             const idOfErc1155 = 1;
             const amountOfErc1155 = 1;
 
-            let sellerNft = user1;
-            let buyerNft = user2;
+            const sellerNft = user1;
+            const buyerNft = user2;
 
             await tokenInst.connect(buyerNft).mint(amountOfErc20);
             await tokenInst.connect(buyerNft).approve(nftMarketplaceInst.address, amountOfErc20);
@@ -180,7 +264,7 @@ describe("NFT Marketplace tests", function () {
                 .connect(buyerNft)
                 .makeSwap(signatureInfo, signature, sellerNft.address);
 
-            let feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
             expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
             expect(await tokenInst.balanceOf(sellerNft.address)).to.be.equals(
                 amountOfErc20.sub(feeAmount)
@@ -197,8 +281,8 @@ describe("NFT Marketplace tests", function () {
             const idOfErc1155 = 1;
             const amountOfErc1155 = 1;
 
-            let sellerErc20 = user1;
-            let buyerErc20 = user2;
+            const sellerErc20 = user1;
+            const buyerErc20 = user2;
 
             await tokenInst.connect(sellerErc20).mint(amountOfErc20);
             await tokenInst.connect(sellerErc20).approve(nftMarketplaceInst.address, amountOfErc20);
@@ -223,7 +307,7 @@ describe("NFT Marketplace tests", function () {
                 .connect(buyerErc20)
                 .makeSwap(signatureInfo, signature, sellerErc20.address);
 
-            let feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
             expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
             expect(await tokenInst.balanceOf(buyerErc20.address)).to.be.equals(
                 amountOfErc20.sub(feeAmount)
@@ -393,8 +477,8 @@ describe("NFT Marketplace tests", function () {
                 const amountOfErc20 = OneToken.mul(10);
                 const idOfErc721 = 1;
 
-                let sellerNft = user1;
-                let buyerNft = user2;
+                const sellerNft = user1;
+                const buyerNft = user2;
 
                 await tokenInst.connect(buyerNft).mint(amountOfErc20);
                 await tokenInst
@@ -440,8 +524,8 @@ describe("NFT Marketplace tests", function () {
                 const amountOfErc20 = OneToken.mul(10);
                 const idOfErc721 = 1;
 
-                let sellerErc20 = user1;
-                let buyerErc20 = user2;
+                const sellerErc20 = user1;
+                const buyerErc20 = user2;
 
                 await tokenInst.connect(sellerErc20).mint(amountOfErc20);
                 await tokenInst
@@ -490,8 +574,8 @@ describe("NFT Marketplace tests", function () {
                 const idOfErc1155 = 1;
                 const amountOfErc1155 = 1;
 
-                let sellerNft = user1;
-                let buyerNft = user2;
+                const sellerNft = user1;
+                const buyerNft = user2;
 
                 await tokenInst.connect(buyerNft).mint(amountOfErc20);
                 await tokenInst
@@ -540,8 +624,8 @@ describe("NFT Marketplace tests", function () {
                 const idOfErc1155 = 1;
                 const amountOfErc1155 = 1;
 
-                let sellerErc20 = user1;
-                let buyerErc20 = user2;
+                const sellerErc20 = user1;
+                const buyerErc20 = user2;
 
                 await tokenInst.connect(sellerErc20).mint(amountOfErc20);
                 await tokenInst
