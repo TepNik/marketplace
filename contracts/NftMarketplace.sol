@@ -222,7 +222,7 @@ contract NftMarketplace is RoyaltiesInfo {
             ifNative = ifNative && msg.value > 0;
 
             if (ifNative) {
-                require(msg.value == tokenInfo.amount);
+                require(msg.value == tokenInfo.amount, "NftMarketplace: Wrong value");
                 (bool success, ) = to.call{
                     value: tokenInfo.amount - feeAmount - royaltyAmount,
                     gas: MAX_GAS_FOR_NATIVE_TRANSFER
