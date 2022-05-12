@@ -20,7 +20,10 @@ async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deployer address:", deployer.address);
 
-    const nftMarketplaceAddress = await utils.deployAndVerify("NftMarketplace", [deployer.address, wNativeAddress]);
+    const nftMarketplaceAddress = await utils.deployAndVerify("NftMarketplace", [
+        deployer.address,
+        wNativeAddress,
+    ]);
 
     await utils.deployAndVerify("Multicall", [nftMarketplaceAddress]);
 
