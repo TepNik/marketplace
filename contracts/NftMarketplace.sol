@@ -19,7 +19,7 @@ contract NftMarketplace is RoyaltiesInfo {
     using ECDSA for bytes;
     using Address for address;
 
-    mapping(bytes32 => bool) public isOrderComplited;
+    mapping(bytes32 => bool) public isOrderCompleted;
 
     address public immutable wNative;
 
@@ -46,6 +46,8 @@ contract NftMarketplace is RoyaltiesInfo {
     struct SignatureInfo {
         address marketplaceAddress;
         address user;
+        bool isTokenToGetMulti;
+        bool isTokenToGiveMulti;
         TokenInfo tokenToGet;
         TokenInfo tokenToGive;
         uint256 deadline;
@@ -66,7 +68,11 @@ contract NftMarketplace is RoyaltiesInfo {
     );
 
     event FeePercentageChange(address indexed manager, uint256 oldValue, uint256 newValue);
-    event FeeReceiverChange(address indexed manager, address oldValue, address newValue);
+    event FeeReceiverChange(
+        address indexed manager,
+        address indexed oldValue,
+        address indexed newValue
+    );
 
     event SwapsPaused(address indexed manager);
     event SwapsUnpaused(address indexed manager);
@@ -133,30 +139,40 @@ contract NftMarketplace is RoyaltiesInfo {
             "NftMarketplace: Wrong tokens type"
         );
 
-        require(!isOrderComplited[orderId], "NftMarketplace: No double orders");
-        isOrderComplited[orderId] = true;
+        require(!isOrderCompleted[orderId], "NftMarketplace: No double orders");
+        isOrderCompleted[orderId] = true;
 
         address nftAddress;
+        uint256 tokenId;
+        uint256 price;
         if (signatureInfoSeller.tokenToGet.tokenType != TokenType.ERC20) {
             nftAddress = signatureInfoSeller.tokenToGet.tokenAddress;
+            tokenId = signatureInfoSeller.tokenToGet.id;
+            price = signatureInfoSeller.tokenToGive.amount;
         } else {
             nftAddress = signatureInfoSeller.tokenToGive.tokenAddress;
+            tokenId = signatureInfoSeller.tokenToGive.id;
+            price = signatureInfoSeller.tokenToGet.amount;
         }
-        (address royaltyReceiver, uint256 royaltyPercentage) = getRoyaltyInfo(nftAddress);
+        (address royaltyReceiver, uint256 royaltyAmount) = getRoyaltyInfo(
+            nftAddress,
+            tokenId,
+            price
+        );
 
         _tokenTransfer(
             signatureInfoSeller.tokenToGive,
             sellerAddress,
             msg.sender,
             royaltyReceiver,
-            royaltyPercentage
+            royaltyAmount
         );
         _tokenTransfer(
             signatureInfoSeller.tokenToGet,
             msg.sender,
             sellerAddress,
             royaltyReceiver,
-            royaltyPercentage
+            royaltyAmount
         );
 
         emit SwapMade(signatureInfoSeller, sellerAddress, msg.sender, orderId);
@@ -176,6 +192,25 @@ contract NftMarketplace is RoyaltiesInfo {
             signatureInfoSeller.user == sellerAddress,
             "NftMarketplace: Wrong user in signature info"
         );
+
+        if (signatureInfoSeller.tokenToGet.tokenType != TokenType.ERC721) {
+            require(
+                signatureInfoSeller.isTokenToGetMulti == false,
+                "NftMarketplace: Only ERC721 can be multi"
+            );
+        } else if (signatureInfoSeller.isTokenToGetMulti) {
+            signatureInfoSeller.tokenToGet.id = 0;
+        }
+
+        if (signatureInfoSeller.tokenToGive.tokenType != TokenType.ERC721) {
+            require(
+                signatureInfoSeller.isTokenToGiveMulti == false,
+                "NftMarketplace: Only ERC721 can be multi"
+            );
+        } else if (signatureInfoSeller.isTokenToGiveMulti) {
+            signatureInfoSeller.tokenToGive.id = 0;
+        }
+
         bytes memory encodedData = abi.encode(signatureInfoSeller);
         orderId = keccak256(encodedData);
         require(
@@ -209,11 +244,15 @@ contract NftMarketplace is RoyaltiesInfo {
         address from,
         address to,
         address royaltyReceiver,
-        uint256 royaltyPercentage
+        uint256 royaltyAmount
     ) private {
         if (tokenInfo.tokenType == TokenType.ERC20) {
             uint256 feeAmount = (tokenInfo.amount * feePercentage) / 100_00;
-            uint256 royaltyAmount = (tokenInfo.amount * royaltyPercentage) / 100_00;
+
+            // not more than 50%
+            if (royaltyAmount > tokenInfo.amount / 2) {
+                royaltyAmount = tokenInfo.amount / 2;
+            }
 
             bool ifNative = from == msg.sender && tokenInfo.tokenAddress == wNative;
             if (!ifNative) {

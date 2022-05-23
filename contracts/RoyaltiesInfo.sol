@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 
 contract RoyaltiesInfo is AccessControlEnumerable {
     using Address for address;
@@ -18,6 +19,8 @@ contract RoyaltiesInfo is AccessControlEnumerable {
 
     mapping(address => RoyaltyInfo) public royaltiesInfo;
 
+    uint256 public defaultFeeForOwner = 2_50; // 2.5%
+
     event AddedAdminRoyalty(
         address indexed manager,
         address token,
@@ -25,9 +28,12 @@ contract RoyaltiesInfo is AccessControlEnumerable {
         uint16 royaltyPercentage
     );
     event DisabledAdminRoyalty(address indexed manager, address token);
+    event ChangedDefaultFeeForOwner(address indexed manager, uint256 oldValue, uint256 newValue);
 
     constructor() {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+
+        emit ChangedDefaultFeeForOwner(msg.sender, 0, defaultFeeForOwner);
     }
 
     function setRoyalty(
@@ -54,6 +60,16 @@ contract RoyaltiesInfo is AccessControlEnumerable {
         emit AddedAdminRoyalty(msg.sender, token, royaltyReceiver, royaltyPercentage);
     }
 
+    function setDefaultFeeForOwner(uint256 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(newValue <= 10_00, "NftMarketplace: Too big percent"); // 10%
+
+        uint256 oldValue = defaultFeeForOwner;
+        require(oldValue != newValue, "NftMarketplace: No change");
+        defaultFeeForOwner = newValue;
+
+        emit ChangedDefaultFeeForOwner(msg.sender, oldValue, newValue);
+    }
+
     function disableAdminRoyalty(address token) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(royaltiesInfo[token].isEnabled == true, "RoyaltiesInfo: Disabled");
 
@@ -62,13 +78,27 @@ contract RoyaltiesInfo is AccessControlEnumerable {
         emit DisabledAdminRoyalty(msg.sender, token);
     }
 
-    function getRoyaltyInfo(address token) public view returns (address, uint256) {
+    function getRoyaltyInfo(
+        address token,
+        uint256 tokenId,
+        uint256 salePrice
+    ) public view returns (address, uint256) {
         RoyaltyInfo memory royaltyInfoToken = royaltiesInfo[token];
         if (royaltyInfoToken.isEnabled) {
-            return (royaltyInfoToken.royaltyReceiver, royaltyInfoToken.royaltyPercentage);
+            return (
+                royaltyInfoToken.royaltyReceiver,
+                (royaltyInfoToken.royaltyPercentage * salePrice) / 100_00
+            );
         } else {
+            try IERC2981(token).royaltyInfo(tokenId, salePrice) returns (
+                address receiver,
+                uint256 amount
+            ) {
+                return (receiver, amount);
+            } catch (bytes memory) {}
+
             try Ownable(token).owner() returns (address owner) {
-                return (owner, 2_50); // 2.50%
+                return (owner, (defaultFeeForOwner * salePrice) / 100_00);
             } catch (bytes memory) {
                 return (address(0), 0);
             }

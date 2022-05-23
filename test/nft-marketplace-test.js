@@ -99,6 +99,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 sellerNft.address,
+                false,
+                false,
                 [0, tokenInst.address, 0, amountOfErc20],
                 [1, erc721Inst.address, idOfErc721, 0],
                 deadline,
@@ -116,7 +118,7 @@ describe("NFT Marketplace tests", function () {
             );
             expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
         });
 
         it("Swap ERC721 to native", async () => {
@@ -142,6 +144,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 sellerNft.address,
+                false,
+                false,
                 [0, wNativeInst.address, 0, amountOfNative],
                 [1, erc721Inst.address, idOfErc721, 0],
                 deadline,
@@ -161,7 +165,7 @@ describe("NFT Marketplace tests", function () {
             );
             expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
 
             await snapshotBefore.restore();
 
@@ -190,7 +194,7 @@ describe("NFT Marketplace tests", function () {
 
             expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
         });
 
         it("Swap ERC20 to ERC721", async () => {
@@ -213,6 +217,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 sellerErc20.address,
+                false,
+                false,
                 [1, erc721Inst.address, idOfErc721, 0],
                 [0, tokenInst.address, 0, amountOfErc20],
                 deadline,
@@ -230,7 +236,168 @@ describe("NFT Marketplace tests", function () {
             );
             expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(sellerErc20.address);
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
+        });
+
+        it("Swap ERC721 to ERC20 with multi", async () => {
+            const amountOfErc20 = OneToken.mul(10);
+            const idOfErc721 = 1;
+
+            const sellerNft = user1;
+            const buyerNft = user2;
+
+            await tokenInst.connect(buyerNft).mint(amountOfErc20);
+            await tokenInst.connect(buyerNft).approve(nftMarketplaceInst.address, amountOfErc20);
+
+            await erc721Inst.connect(sellerNft).mint(idOfErc721);
+            await erc721Inst.connect(sellerNft).setApprovalForAll(nftMarketplaceInst.address, true);
+
+            const deadline = timestampNow + 1000000;
+
+            const signatureInfo = [
+                nftMarketplaceInst.address, // 0
+                sellerNft.address, // 1
+                false, // 2
+                true, // 3
+                [0, tokenInst.address, 0, amountOfErc20], // 4
+                [1, erc721Inst.address, 0, 0], // 5
+                deadline, // 6
+            ];
+            const [signature, orderId] = await signInfo(sellerNft, signatureInfo);
+            signatureInfo[5][2] = idOfErc721;
+
+            await nftMarketplaceInst
+                .connect(buyerNft)
+                .makeSwap(signatureInfo, signature, sellerNft.address);
+
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
+            expect(await tokenInst.balanceOf(sellerNft.address)).to.be.equals(
+                amountOfErc20.sub(feeAmount)
+            );
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
+
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
+        });
+
+        it("Swap ERC721 to native with multi", async () => {
+            const amountOfNative = OneEth;
+            const idOfErc721 = 1;
+
+            const sellerNft = user1;
+            const buyerNft = user2;
+
+            await wNativeInst.connect(buyerNft).mint(amountOfNative);
+            await wNativeInst.connect(buyerNft).approve(nftMarketplaceInst.address, amountOfNative);
+
+            await erc721Inst.connect(sellerNft).mint(idOfErc721);
+            await erc721Inst.connect(sellerNft).setApprovalForAll(nftMarketplaceInst.address, true);
+
+            const ethBalanceSellerBefore = await ethers.provider.getBalance(sellerNft.address);
+            const ethBalanceFeeReceiverBefore = await ethers.provider.getBalance(
+                feeReceiver.address
+            );
+
+            const deadline = timestampNow + 1000000;
+
+            const signatureInfo = [
+                nftMarketplaceInst.address, // 0
+                sellerNft.address, // 1
+                false, // 2
+                true, // 3
+                [0, wNativeInst.address, 0, amountOfNative], // 4
+                [1, erc721Inst.address, 0, 0], // 5
+                deadline, // 6
+            ];
+            const [signature, orderId] = await signInfo(sellerNft, signatureInfo);
+            signatureInfo[5][2] = idOfErc721;
+
+            const snapshotBefore = await snapshot();
+
+            await nftMarketplaceInst
+                .connect(buyerNft)
+                .makeSwap(signatureInfo, signature, sellerNft.address);
+
+            let feeAmount = feePercentage.mul(amountOfNative).div(10000);
+            expect(await wNativeInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
+            expect(await wNativeInst.balanceOf(sellerNft.address)).to.be.equals(
+                amountOfNative.sub(feeAmount)
+            );
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
+
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
+
+            await snapshotBefore.restore();
+
+            await nftMarketplaceInst
+                .connect(buyerNft)
+                .makeSwap(signatureInfo, signature, sellerNft.address, {
+                    value: amountOfNative,
+                });
+
+            const ethBalanceSellerAfter = await ethers.provider.getBalance(sellerNft.address);
+            const ethBalanceFeeReceiverAfter = await ethers.provider.getBalance(
+                feeReceiver.address
+            );
+
+            feeAmount = feePercentage.mul(amountOfNative).div(10000);
+            expect(await wNativeInst.balanceOf(feeReceiver.address)).to.be.equals(0);
+            expect(await wNativeInst.balanceOf(sellerNft.address)).to.be.equals(0);
+            expect(await wNativeInst.balanceOf(buyerNft.address)).to.be.equals(amountOfNative);
+
+            expect(ethBalanceSellerAfter.sub(ethBalanceSellerBefore)).to.be.equals(
+                amountOfNative.sub(feeAmount)
+            );
+            expect(ethBalanceFeeReceiverAfter.sub(ethBalanceFeeReceiverBefore)).to.be.equals(
+                feeAmount
+            );
+
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
+
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
+        });
+
+        it("Swap ERC20 to ERC721 with multi", async () => {
+            const amountOfErc20 = OneToken.mul(10);
+            const idOfErc721 = 1;
+
+            const sellerErc20 = user1;
+            const buyerErc20 = user2;
+
+            await tokenInst.connect(sellerErc20).mint(amountOfErc20);
+            await tokenInst.connect(sellerErc20).approve(nftMarketplaceInst.address, amountOfErc20);
+
+            await erc721Inst.connect(buyerErc20).mint(idOfErc721);
+            await erc721Inst
+                .connect(buyerErc20)
+                .setApprovalForAll(nftMarketplaceInst.address, true);
+
+            const deadline = timestampNow + 1000000;
+
+            const signatureInfo = [
+                nftMarketplaceInst.address, // 0
+                sellerErc20.address, // 1
+                true, // 2
+                false, // 3
+                [1, erc721Inst.address, 0, 0], // 4
+                [0, tokenInst.address, 0, amountOfErc20], // 5
+                deadline, // 6
+            ];
+            const [signature, orderId] = await signInfo(sellerErc20, signatureInfo);
+            signatureInfo[4][2] = idOfErc721;
+
+            await nftMarketplaceInst
+                .connect(buyerErc20)
+                .makeSwap(signatureInfo, signature, sellerErc20.address);
+
+            const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
+            expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
+            expect(await tokenInst.balanceOf(buyerErc20.address)).to.be.equals(
+                amountOfErc20.sub(feeAmount)
+            );
+            expect(await erc721Inst.ownerOf(idOfErc721)).to.be.equals(sellerErc20.address);
+
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
         });
 
         it("Swap ERC1155 to ERC20", async () => {
@@ -254,6 +421,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 sellerNft.address,
+                false,
+                false,
                 [0, tokenInst.address, 0, amountOfErc20],
                 [2, erc1155Inst.address, idOfErc1155, amountOfErc1155],
                 deadline,
@@ -273,7 +442,7 @@ describe("NFT Marketplace tests", function () {
                 amountOfErc1155
             );
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
         });
 
         it("Swap ERC20 to ERC1155", async () => {
@@ -297,6 +466,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 sellerErc20.address,
+                false,
+                false,
                 [2, erc1155Inst.address, idOfErc1155, amountOfErc1155],
                 [0, tokenInst.address, 0, amountOfErc20],
                 deadline,
@@ -316,7 +487,7 @@ describe("NFT Marketplace tests", function () {
                 amountOfErc1155
             );
 
-            expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+            expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
         });
     });
 
@@ -373,6 +544,8 @@ describe("NFT Marketplace tests", function () {
             const signatureInfo = [
                 nftMarketplaceInst.address,
                 user1.address,
+                false,
+                false,
                 [0, tokenInst.address, 0, 1],
                 [1, erc721Inst.address, 0, 1],
                 timestampNow,
@@ -445,31 +618,47 @@ describe("NFT Marketplace tests", function () {
 
     describe("Royalties", () => {
         it("Setting/disabling royalties", async () => {
-            let royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721Inst.address);
+            let royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
+                erc721Inst.address,
+                0,
+                OneEth
+            );
             expect(royaltyInfo[0]).to.be.equals(ethers.constants.AddressZero);
             expect(royaltyInfo[1]).to.be.equals(0);
 
-            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721OwnableInst.address);
+            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
+                erc721OwnableInst.address,
+                0,
+                OneEth
+            );
             expect(royaltyInfo[0]).to.be.equals(deployer.address);
-            expect(royaltyInfo[1]).to.be.equals(250);
+            expect(royaltyInfo[1]).to.be.equals(OneEth.div(40));
 
             await nftMarketplaceInst.setRoyalty(erc721Inst.address, user1.address, 100);
-            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721Inst.address);
+            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721Inst.address, 0, OneEth);
             expect(royaltyInfo[0]).to.be.equals(user1.address);
-            expect(royaltyInfo[1]).to.be.equals(100);
+            expect(royaltyInfo[1]).to.be.equals(OneEth.div(100));
             await nftMarketplaceInst.disableAdminRoyalty(erc721Inst.address);
-            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721Inst.address);
+            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721Inst.address, 0, OneEth);
             expect(royaltyInfo[0]).to.be.equals(ethers.constants.AddressZero);
             expect(royaltyInfo[1]).to.be.equals(0);
 
             await nftMarketplaceInst.setRoyalty(erc721OwnableInst.address, user2.address, 200);
-            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721OwnableInst.address);
+            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
+                erc721OwnableInst.address,
+                0,
+                OneEth
+            );
             expect(royaltyInfo[0]).to.be.equals(user2.address);
-            expect(royaltyInfo[1]).to.be.equals(200);
+            expect(royaltyInfo[1]).to.be.equals(OneEth.div(50));
             await nftMarketplaceInst.disableAdminRoyalty(erc721OwnableInst.address);
-            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(erc721OwnableInst.address);
+            royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
+                erc721OwnableInst.address,
+                0,
+                OneEth
+            );
             expect(royaltyInfo[0]).to.be.equals(deployer.address);
-            expect(royaltyInfo[1]).to.be.equals(250);
+            expect(royaltyInfo[1]).to.be.equals(OneEth.div(40));
         });
 
         describe("Swaps with royalties", () => {
@@ -495,6 +684,8 @@ describe("NFT Marketplace tests", function () {
                 const signatureInfo = [
                     nftMarketplaceInst.address,
                     sellerNft.address,
+                    false,
+                    false,
                     [0, tokenInst.address, 0, amountOfErc20],
                     [1, erc721OwnableInst.address, idOfErc721, 0],
                     deadline,
@@ -507,17 +698,18 @@ describe("NFT Marketplace tests", function () {
 
                 const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
                 const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
-                    erc721OwnableInst.address
+                    erc721OwnableInst.address,
+                    idOfErc721,
+                    amountOfErc20
                 );
-                const royaltyAmount = amountOfErc20.mul(royaltyInfo[1]).div(10000);
                 expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
                 expect(await tokenInst.balanceOf(sellerNft.address)).to.be.equals(
-                    amountOfErc20.sub(feeAmount).sub(royaltyAmount)
+                    amountOfErc20.sub(feeAmount).sub(royaltyInfo[1])
                 );
-                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyAmount);
+                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyInfo[1]);
                 expect(await erc721OwnableInst.ownerOf(idOfErc721)).to.be.equals(buyerNft.address);
 
-                expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+                expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
             });
 
             it("Swap ERC20 to ERC721", async () => {
@@ -542,6 +734,8 @@ describe("NFT Marketplace tests", function () {
                 const signatureInfo = [
                     nftMarketplaceInst.address,
                     sellerErc20.address,
+                    false,
+                    false,
                     [1, erc721OwnableInst.address, idOfErc721, 0],
                     [0, tokenInst.address, 0, amountOfErc20],
                     deadline,
@@ -554,19 +748,20 @@ describe("NFT Marketplace tests", function () {
 
                 const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
                 const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
-                    erc721OwnableInst.address
+                    erc721OwnableInst.address,
+                    idOfErc721,
+                    amountOfErc20
                 );
-                const royaltyAmount = amountOfErc20.mul(royaltyInfo[1]).div(10000);
                 expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
                 expect(await tokenInst.balanceOf(buyerErc20.address)).to.be.equals(
-                    amountOfErc20.sub(feeAmount).sub(royaltyAmount)
+                    amountOfErc20.sub(feeAmount).sub(royaltyInfo[1])
                 );
-                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyAmount);
+                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyInfo[1]);
                 expect(await erc721OwnableInst.ownerOf(idOfErc721)).to.be.equals(
                     sellerErc20.address
                 );
 
-                expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+                expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
             });
 
             it("Swap ERC1155 to ERC20", async () => {
@@ -592,6 +787,8 @@ describe("NFT Marketplace tests", function () {
                 const signatureInfo = [
                     nftMarketplaceInst.address,
                     sellerNft.address,
+                    false,
+                    false,
                     [0, tokenInst.address, 0, amountOfErc20],
                     [2, erc1155OwnableInst.address, idOfErc1155, amountOfErc1155],
                     deadline,
@@ -604,19 +801,20 @@ describe("NFT Marketplace tests", function () {
 
                 const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
                 const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
-                    erc721OwnableInst.address
+                    erc721OwnableInst.address,
+                    idOfErc1155,
+                    amountOfErc20
                 );
-                const royaltyAmount = amountOfErc20.mul(royaltyInfo[1]).div(10000);
                 expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
                 expect(await tokenInst.balanceOf(sellerNft.address)).to.be.equals(
-                    amountOfErc20.sub(feeAmount).sub(royaltyAmount)
+                    amountOfErc20.sub(feeAmount).sub(royaltyInfo[1])
                 );
-                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyAmount);
+                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyInfo[1]);
                 expect(
                     await erc1155OwnableInst.balanceOf(buyerNft.address, idOfErc1155)
                 ).to.be.equals(amountOfErc1155);
 
-                expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+                expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
             });
 
             it("Swap ERC20 to ERC1155", async () => {
@@ -642,6 +840,8 @@ describe("NFT Marketplace tests", function () {
                 const signatureInfo = [
                     nftMarketplaceInst.address,
                     sellerErc20.address,
+                    false,
+                    false,
                     [2, erc1155OwnableInst.address, idOfErc1155, amountOfErc1155],
                     [0, tokenInst.address, 0, amountOfErc20],
                     deadline,
@@ -654,19 +854,20 @@ describe("NFT Marketplace tests", function () {
 
                 const feeAmount = feePercentage.mul(amountOfErc20).div(10000);
                 const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
-                    erc721OwnableInst.address
+                    erc721OwnableInst.address,
+                    idOfErc1155,
+                    amountOfErc20
                 );
-                const royaltyAmount = amountOfErc20.mul(royaltyInfo[1]).div(10000);
                 expect(await tokenInst.balanceOf(feeReceiver.address)).to.be.equals(feeAmount);
                 expect(await tokenInst.balanceOf(buyerErc20.address)).to.be.equals(
-                    amountOfErc20.sub(feeAmount).sub(royaltyAmount)
+                    amountOfErc20.sub(feeAmount).sub(royaltyInfo[1])
                 );
-                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyAmount);
+                expect(await tokenInst.balanceOf(royaltyInfo[0])).to.be.equals(royaltyInfo[1]);
                 expect(
                     await erc1155OwnableInst.balanceOf(sellerErc20.address, idOfErc1155)
                 ).to.be.equals(amountOfErc1155);
 
-                expect(await nftMarketplaceInst.isOrderComplited(orderId)).to.be.true;
+                expect(await nftMarketplaceInst.isOrderCompleted(orderId)).to.be.true;
             });
         });
     });
@@ -674,7 +875,7 @@ describe("NFT Marketplace tests", function () {
     async function signInfo(user, info) {
         const encodedSignatureInfo = ethers.utils.defaultAbiCoder.encode(
             [
-                "(address,address,(uint8,address,uint256,uint256),(uint8,address,uint256,uint256),uint256)",
+                "(address,address,bool,bool,(uint8,address,uint256,uint256),(uint8,address,uint256,uint256),uint256)",
             ],
             [info]
         );
