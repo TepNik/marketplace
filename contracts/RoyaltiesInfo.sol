@@ -26,7 +26,6 @@ contract RoyaltiesInfo is AccessControlEnumerable {
     /// Can be changed in setDefaultFeeForOwner() function.
     uint256 public defaultFeeForOwner = 2_50; // 2.5%
 
-
     /// @notice Event is emmited when an admin of the contract (`manager`) has added a new royalty config (`royaltyReceiver` will receive `royaltyPercentage` percentages) for a collection `token`.
     /// @param manager Admin of the contract that has set a new royalty config for a collection `token`.
     /// @param token Address of a collection.

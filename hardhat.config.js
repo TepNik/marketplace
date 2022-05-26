@@ -115,10 +115,10 @@ module.exports = {
         runOnCompile: true,
     },
     docgen: {
-        path: './docs',
+        path: "./docs",
         clear: true,
         runOnCompile: true,
         //except: ['contracts/test/*']
-        only: ['contracts/NftMarketplace.sol']
-    }
+        only: ["contracts/NftMarketplace.sol"],
+    },
 };

@@ -19,7 +19,7 @@ contract NftMarketplace is RoyaltiesInfo {
     using ECDSA for bytes;
     using Address for address;
 
-    /// @notice Holds information about completed orders.
+    /// @notice Holds information about whether an order is completed or not.
     mapping(bytes32 => bool) public isOrderCompleted;
 
     /// @notice Address of the WNative ERC20 token.
@@ -27,7 +27,7 @@ contract NftMarketplace is RoyaltiesInfo {
 
     /// @notice Fee percentage of the marketplace (denominator 10000). Max value is 1000 (10%).
     uint256 public feePercentage = 2_50; // 2.5%
-    /// @notice Address that will receive all fees of the marketplace.
+    /// @notice Address that will receive all marketplace fees.
     address public feeReceiver;
 
     /// @notice Shows if the marketplace is paused by an admin.
@@ -58,11 +58,10 @@ contract NftMarketplace is RoyaltiesInfo {
         uint256 deadline;
     }
 
-
     /// @notice Event is emmited when an order is completed.
     /// @param signatureInfo Info about an order. More info about this structure can be found in makeSwap() function.
-    /// @param seller Address that sold his tokens.
-    /// @param buyer Address that buys tokens. This address signed swap transaction.
+    /// @param seller Address that sold their tokens.
+    /// @param buyer This address signed the swap transaction.
     /// @param orderId Unique identifier for this order.
     event SwapMade(
         SignatureInfo signatureInfo,
@@ -71,13 +70,13 @@ contract NftMarketplace is RoyaltiesInfo {
         bytes32 orderId
     );
 
-    /// @notice Event is emmited when fees of the marketplace were transfered.
+    /// @notice Event is emmited when fees of the marketplace were transferred.
     /// @param feeReceiver Address that received fees.
     /// @param token Address of a token that was transfered.
     /// @param amount Fee amount.
     event FeeTransferred(address indexed feeReceiver, address indexed token, uint256 amount);
 
-    /// @notice Event is emmited when royalties were transfered.
+    /// @notice Event is emmited when royalties were transferred.
     /// @param royaltyReceiver Address that received royalties.
     /// @param token Address of a token that was transfered.
     /// @param amount Royalty amount.
@@ -88,9 +87,9 @@ contract NftMarketplace is RoyaltiesInfo {
     );
 
     /// @notice Event is emmited when an admin (`manager`) has set new fee percentages for the marketplace.
-    /// @param manager Address of an admin that has changed fee percentages for the marketplace.
-    /// @param oldValue Previous value of fee percentage for the marketplace.
-    /// @param newValue New value of fee percentage for the marketplace.
+    /// @param manager Address of the admin that has changed fee percentages for the marketplace.
+    /// @param oldValue Previous value of fee percentages for the marketplace.
+    /// @param newValue New value of fee percentages for the marketplace.
     event FeePercentageChange(address indexed manager, uint256 oldValue, uint256 newValue);
     /// @notice Event is emmited when an admin (`manager`) has set new fee receiver for the marketplace.
     /// @param manager Address of an admin that has changed fee receiver for the marketplace.
@@ -122,8 +121,8 @@ contract NftMarketplace is RoyaltiesInfo {
         emit FeeReceiverChange(msg.sender, address(0), _feeReceiver);
     }
 
-    /// @notice Admin funciton for setting new value for fee percentage of the marketplace.
-    /// @param newValue New value of the marketplace's fee percentage.
+    /// @notice Admin funciton for setting new value for fee percentages of the marketplace.
+    /// @param newValue New value of the marketplace fee percentages.
     function setFeePercentage(uint256 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(newValue <= 10_00, "NftMarketplace: Too big percentage"); // 10% max
 
