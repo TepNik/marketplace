@@ -29,6 +29,8 @@ require("hardhat-tracer");
 
 require("@nomiclabs/hardhat-web3");
 
+require("hardhat-docgen");
+
 let config = require("./config.js");
 
 module.exports = {
@@ -112,4 +114,11 @@ module.exports = {
         overwrite: false,
         runOnCompile: true,
     },
+    docgen: {
+        path: './docs',
+        clear: true,
+        runOnCompile: true,
+        //except: ['contracts/test/*']
+        only: ['contracts/NftMarketplace.sol']
+    }
 };
