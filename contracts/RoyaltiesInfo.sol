@@ -86,7 +86,7 @@ contract RoyaltiesInfo is AccessControlEnumerable {
         emit AddedAdminRoyalty(msg.sender, token, royaltyReceiver, royaltyPercentage);
     }
 
-    /// @notice Admin function for setting new value (`newValue`) for defaultFeeForOwner variable
+    /// @notice Admin function for setting new value (`newValue`) for defaultFeeForOwner variable.
     /// @dev Changes variable defaultFeeForOwner.
     /// @param newValue New value for variable defaultFeeForOwner.
     function setDefaultFeeForOwner(uint256 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -115,7 +115,7 @@ contract RoyaltiesInfo is AccessControlEnumerable {
     /// 1) Royalty config;
     /// 2) Info from ERC2981 standard;
     /// 3) Owner of a collection.
-    /// If A collection doesn't have any of this items, there will be no royalties for the colleciton.
+    /// If a collection doesn't have any of these items, there will be no royalties for the colleciton.
     /// @param token Address of a colleciton.
     /// @param tokenId Id of a collection that is sold.
     /// @param salePrice Sale price for this `tokenId`.

@@ -158,7 +158,7 @@ contract NftMarketplace is RoyaltiesInfo {
     }
 
     /// @notice Function for performing swap and completing an order.
-    /// @param sellerSignature Signature of a seller. Signing message have to be the first argument (`signatureInfoSeller`).
+    /// @param sellerSignature Signature of a seller. Signing message has to be the first argument (`signatureInfoSeller`).
     /// @param sellerAddress Address of a seller.
     function makeSwap(
         SignatureInfo calldata signatureInfoSeller,
