@@ -1,7 +1,7 @@
 const { snapshot } = require("@openzeppelin/test-helpers");
 const { expect } = require("chai");
-//const { ethers } = require("ethers");
 const { randomBytes } = require("crypto");
+const { ethers } = require("hardhat");
 
 const BN = ethers.BigNumber;
 
@@ -97,7 +97,6 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 sellerNft.address,
                 false,
                 false,
@@ -142,7 +141,6 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 sellerNft.address,
                 false,
                 false,
@@ -215,7 +213,6 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 sellerErc20.address,
                 false,
                 false,
@@ -255,16 +252,15 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address, // 0
-                sellerNft.address, // 1
-                false, // 2
-                true, // 3
-                [0, tokenInst.address, 0, amountOfErc20], // 4
-                [1, erc721Inst.address, 0, 0], // 5
-                deadline, // 6
+                sellerNft.address, // 0
+                false, // 1
+                true, // 2
+                [0, tokenInst.address, 0, amountOfErc20], // 3
+                [1, erc721Inst.address, 0, 0], // 4
+                deadline, // 5
             ];
             const [signature, orderId] = await signInfo(sellerNft, signatureInfo);
-            signatureInfo[5][2] = idOfErc721;
+            signatureInfo[4][2] = idOfErc721;
 
             await nftMarketplaceInst
                 .connect(buyerNft)
@@ -301,16 +297,15 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address, // 0
-                sellerNft.address, // 1
-                false, // 2
-                true, // 3
-                [0, wNativeInst.address, 0, amountOfNative], // 4
-                [1, erc721Inst.address, 0, 0], // 5
-                deadline, // 6
+                sellerNft.address, // 0
+                false, // 1
+                true, // 2
+                [0, wNativeInst.address, 0, amountOfNative], // 3
+                [1, erc721Inst.address, 0, 0], // 4
+                deadline, // 5
             ];
             const [signature, orderId] = await signInfo(sellerNft, signatureInfo);
-            signatureInfo[5][2] = idOfErc721;
+            signatureInfo[4][2] = idOfErc721;
 
             const snapshotBefore = await snapshot();
 
@@ -375,16 +370,15 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address, // 0
-                sellerErc20.address, // 1
-                true, // 2
-                false, // 3
-                [1, erc721Inst.address, 0, 0], // 4
-                [0, tokenInst.address, 0, amountOfErc20], // 5
-                deadline, // 6
+                sellerErc20.address, // 0
+                true, // 1
+                false, // 2
+                [1, erc721Inst.address, 0, 0], // 3
+                [0, tokenInst.address, 0, amountOfErc20], // 4
+                deadline, // 5
             ];
             const [signature, orderId] = await signInfo(sellerErc20, signatureInfo);
-            signatureInfo[4][2] = idOfErc721;
+            signatureInfo[3][2] = idOfErc721;
 
             await nftMarketplaceInst
                 .connect(buyerErc20)
@@ -419,7 +413,6 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 sellerNft.address,
                 false,
                 false,
@@ -464,7 +457,6 @@ describe("NFT Marketplace tests", function () {
             const deadline = timestampNow + 1000000;
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 sellerErc20.address,
                 false,
                 false,
@@ -542,7 +534,6 @@ describe("NFT Marketplace tests", function () {
                 .withArgs(deployer.address);
 
             const signatureInfo = [
-                nftMarketplaceInst.address,
                 user1.address,
                 false,
                 false,
@@ -682,7 +673,6 @@ describe("NFT Marketplace tests", function () {
                 const deadline = timestampNow + 1000000;
 
                 const signatureInfo = [
-                    nftMarketplaceInst.address,
                     sellerNft.address,
                     false,
                     false,
@@ -732,7 +722,6 @@ describe("NFT Marketplace tests", function () {
                 const deadline = timestampNow + 1000000;
 
                 const signatureInfo = [
-                    nftMarketplaceInst.address,
                     sellerErc20.address,
                     false,
                     false,
@@ -785,7 +774,6 @@ describe("NFT Marketplace tests", function () {
                 const deadline = timestampNow + 1000000;
 
                 const signatureInfo = [
-                    nftMarketplaceInst.address,
                     sellerNft.address,
                     false,
                     false,
@@ -838,7 +826,6 @@ describe("NFT Marketplace tests", function () {
                 const deadline = timestampNow + 1000000;
 
                 const signatureInfo = [
-                    nftMarketplaceInst.address,
                     sellerErc20.address,
                     false,
                     false,
@@ -873,14 +860,57 @@ describe("NFT Marketplace tests", function () {
     });
 
     async function signInfo(user, info) {
+        const domain = {
+            name: "Nft Marketplace",
+            version: "1",
+            chainId: (await ethers.provider.getNetwork()).chainId,
+            verifyingContract: nftMarketplaceInst.address,
+        };
+
+        const types = {
+            TokenInfo: [
+                { name: "tokenType", type: "uint8" },
+                { name: "tokenAddress", type: "address" },
+                { name: "id", type: "uint256" },
+                { name: "amount", type: "uint256" },
+            ],
+            SignatureInfo: [
+                { name: "user", type: "address" },
+                { name: "isTokenToGetMulti", type: "bool" },
+                { name: "isTokenToGiveMulti", type: "bool" },
+                { name: "tokenToGet", type: "TokenInfo" },
+                { name: "tokenToGive", type: "TokenInfo" },
+                { name: "deadline", type: "uint256" },
+            ],
+        };
+
+        const value = {
+            user: info[0],
+            isTokenToGetMulti: info[1],
+            isTokenToGiveMulti: info[2],
+            tokenToGet: {
+                tokenType: info[3][0],
+                tokenAddress: info[3][1],
+                id: info[3][2],
+                amount: info[3][3],
+            },
+            tokenToGive: {
+                tokenType: info[4][0],
+                tokenAddress: info[4][1],
+                id: info[4][2],
+                amount: info[4][3],
+            },
+            deadline: info[5],
+        };
+
         const encodedSignatureInfo = ethers.utils.defaultAbiCoder.encode(
             [
-                "(address,address,bool,bool,(uint8,address,uint256,uint256),(uint8,address,uint256,uint256),uint256)",
+                "(address,bool,bool,(uint8,address,uint256,uint256),(uint8,address,uint256,uint256),uint256)",
             ],
             [info]
         );
         const orderId = ethers.utils.keccak256(ethers.utils.arrayify(encodedSignatureInfo));
-        const signature = await user.signMessage(ethers.utils.arrayify(orderId));
+        const signature = await user._signTypedData(domain, types, value);
 
         return [signature, orderId];
     }

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity 0.8.13;
+pragma solidity 0.8.15;
 
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
@@ -12,8 +11,9 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 import "./RoyaltiesInfo.sol";
+import "./EIP712.sol";
 
-contract NftMarketplace is RoyaltiesInfo {
+contract NftMarketplace is RoyaltiesInfo, EIP712 {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
     using ECDSA for bytes;
@@ -34,29 +34,6 @@ contract NftMarketplace is RoyaltiesInfo {
     bool public isPaused;
 
     uint256 private constant MAX_GAS_FOR_NATIVE_TRANSFER = 200_000;
-
-    enum TokenType {
-        ERC20,
-        ERC721,
-        ERC1155
-    }
-
-    struct TokenInfo {
-        TokenType tokenType;
-        address tokenAddress;
-        uint256 id; // For ERC20 must be 0
-        uint256 amount; // For ERC721 must be 0
-    }
-
-    struct SignatureInfo {
-        address marketplaceAddress;
-        address user;
-        bool isTokenToGetMulti;
-        bool isTokenToGiveMulti;
-        TokenInfo tokenToGet;
-        TokenInfo tokenToGive;
-        uint256 deadline;
-    }
 
     /// @notice Event is emmited when an order is completed.
     /// @param signatureInfo Info about an order. More info about this structure can be found in makeSwap() function.
@@ -218,47 +195,6 @@ contract NftMarketplace is RoyaltiesInfo {
         );
 
         emit SwapMade(signatureInfoSeller, sellerAddress, msg.sender, orderId);
-    }
-
-    function _verifySignature(
-        SignatureInfo memory signatureInfoSeller,
-        bytes calldata sellerSignature,
-        address sellerAddress
-    ) private view returns (bytes32 orderId) {
-        require(
-            signatureInfoSeller.marketplaceAddress == address(this),
-            "NftMarketplace: Wrong marketplace"
-        );
-        require(block.timestamp <= signatureInfoSeller.deadline, "NftMarketplace: Deadline error");
-        require(
-            signatureInfoSeller.user == sellerAddress,
-            "NftMarketplace: Wrong user in signature info"
-        );
-
-        if (signatureInfoSeller.tokenToGet.tokenType != TokenType.ERC721) {
-            require(
-                signatureInfoSeller.isTokenToGetMulti == false,
-                "NftMarketplace: Only ERC721 can be multi"
-            );
-        } else if (signatureInfoSeller.isTokenToGetMulti) {
-            signatureInfoSeller.tokenToGet.id = 0;
-        }
-
-        if (signatureInfoSeller.tokenToGive.tokenType != TokenType.ERC721) {
-            require(
-                signatureInfoSeller.isTokenToGiveMulti == false,
-                "NftMarketplace: Only ERC721 can be multi"
-            );
-        } else if (signatureInfoSeller.isTokenToGiveMulti) {
-            signatureInfoSeller.tokenToGive.id = 0;
-        }
-
-        bytes memory encodedData = abi.encode(signatureInfoSeller);
-        orderId = keccak256(encodedData);
-        require(
-            orderId.toEthSignedMessageHash().recover(sellerSignature) == sellerAddress,
-            "NftMarketplace: Wrong signature"
-        );
     }
 
     function _verifyToken(TokenInfo calldata tokenInfo) private view {

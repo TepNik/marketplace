@@ -3,3 +3,4 @@ cache/
 data/
 node_modules/
 coverage.json
+docs/
