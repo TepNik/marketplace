@@ -10,3 +10,4 @@ signature.js
 .env
 process_transaction.js
 output.sol
+.DS_Store

@@ -1,35 +1,35 @@
-require("@nomiclabs/hardhat-waffle");
+import "@nomicfoundation/hardhat-chai-matchers";
 
 // Automatic verification on etherscan, bscscan and others
 // command: npx hardhat verify --network mainnet DEPLOYED_CONTRACT_ADDRESS
-require("@nomiclabs/hardhat-etherscan");
+import "@nomiclabs/hardhat-etherscan";
 
 // command: npx hardhat coverage
-require("solidity-coverage");
+import "solidity-coverage";
 
 // Writes bytecode sizes of smart contracts
-require("hardhat-contract-sizer");
+import "hardhat-contract-sizer";
 
 // Writes information of gas usage in tests
-require("hardhat-gas-reporter");
+import "hardhat-gas-reporter";
 
 // Exports smart contract ABIs on compilation
-require("hardhat-abi-exporter");
+import "hardhat-abi-exporter";
 
 // Writes SPDX License Identifier into sol files
 // Type of license it takes from package.json
-require("hardhat-spdx-license-identifier");
+import "hardhat-spdx-license-identifier";
 
 // command: npx hardhat check
-require("@nomiclabs/hardhat-solhint");
+import "@nomiclabs/hardhat-solhint";
 
 // Prints events when running tests
 // command: npx hardhat test --logs
-require("hardhat-tracer");
+import "hardhat-tracer";
 
-require("@nomiclabs/hardhat-web3");
+import "@nomiclabs/hardhat-web3";
 
-require("hardhat-docgen");
+import "solidity-docgen";
 
 let config = require("./config.js");
 
@@ -91,6 +91,7 @@ module.exports = {
     },
     mocha: {
         timeout: 100000,
+        //parallel: true,
     },
     contractSizer: {
         alphaSort: true,
@@ -115,10 +116,7 @@ module.exports = {
         runOnCompile: true,
     },
     docgen: {
-        path: "./docs",
-        clear: true,
-        runOnCompile: true,
-        //except: ['contracts/test/*']
-        only: ["contracts/NftMarketplace.sol"],
+        pages: "items",
+        exclude: ["test/"],
     },
 };

@@ -24,7 +24,7 @@ contract RoyaltiesInfo is AccessControlEnumerable {
 
     /// @notice Amount of royalties in percent (denominator 10000) for a collection in case when royalty receiver is the owner of the collection. Max value can be 1000 (10%).
     /// Can be changed in setDefaultFeeForOwner() function.
-    uint256 public defaultFeeForOwner = 2_50; // 2.5%
+    uint16 public defaultFeeForOwner = 2_50; // 2.5%
 
     /// @notice Event is emmited when an admin of the contract (`manager`) has added a new royalty config (`royaltyReceiver` will receive `royaltyPercentage` percentages) for a collection `token`.
     /// @param manager Admin of the contract that has set a new royalty config for a collection `token`.
@@ -74,7 +74,7 @@ contract RoyaltiesInfo is AccessControlEnumerable {
             "RoyaltiesInfo: Wrong interface"
         );
 
-        require(royaltyPercentage <= 10_00, "RoyaltiesInfo: Percentage"); // 10%
+        require(royaltyPercentage <= 10_00 && royaltyPercentage > 0, "RoyaltiesInfo: Percentage"); // 10%
         require(royaltyReceiver != address(0), "RoyaltiesInfo: royaltyReceiver");
 
         royaltiesInfo[token] = RoyaltyInfo({
@@ -89,7 +89,7 @@ contract RoyaltiesInfo is AccessControlEnumerable {
     /// @notice Admin function for setting new value (`newValue`) for defaultFeeForOwner variable.
     /// @dev Changes variable defaultFeeForOwner.
     /// @param newValue New value for variable defaultFeeForOwner.
-    function setDefaultFeeForOwner(uint256 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setDefaultFeeForOwner(uint16 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(newValue <= 10_00, "NftMarketplace: Too big percent"); // 10%
 
         uint256 oldValue = defaultFeeForOwner;
@@ -119,13 +119,13 @@ contract RoyaltiesInfo is AccessControlEnumerable {
     /// @param token Address of a colleciton.
     /// @param tokenId Id of a collection that is sold.
     /// @param salePrice Sale price for this `tokenId`.
-    /// @return Address that will receive royalties for collection `token`.
-    /// @return Amount of royaly in tokens.
+    /// @return royaltyReceiver Address that will receive royalties for collection `token`.
+    /// @return royaltyAmount Amount of royaly in tokens.
     function getRoyaltyInfo(
         address token,
         uint256 tokenId,
         uint256 salePrice
-    ) public view returns (address, uint256) {
+    ) public view returns (address royaltyReceiver, uint256 royaltyAmount) {
         RoyaltyInfo memory royaltyInfoToken = royaltiesInfo[token];
         if (royaltyInfoToken.isEnabled) {
             return (
