@@ -26,7 +26,6 @@ export interface AuctionData {
     seller: string;
     startTime: number;
     endTime: number;
-    minPrice: BigNumber;
     bidToken: string;
     lastBidAmount: BigNumber;
     lastBidder: string;
@@ -37,13 +36,12 @@ export interface AuctionDataRaw {
     seller: string;
     startTime: number;
     endTime: number;
-    minPrice: BigNumber;
     bidToken: string;
     lastBidAmount: BigNumber;
     lastBidder: string;
 }
 
-export interface RoyaltyInfo {
+interface RoyaltyInfo {
     isEnabled: boolean;
     royaltyReceiver: string;
     royaltyPercentage: number;
@@ -54,6 +52,9 @@ interface GetRoyaltyInfoRaw {
     royaltyAmount: BigNumber;
 }
 
+type AllNumbers = number | string | BigNumber;
+type AllBigNumbers = string | BigNumber;
+
 export interface ERC20Contract extends Contract {
     connect(user: SignerWithAddress): ERC20Contract;
 
@@ -63,21 +64,17 @@ export interface ERC20Contract extends Contract {
 
     totalSupply(): Promise<BigNumber>;
     balanceOf(account: string): Promise<BigNumber>;
-    transfer(
-        to: string,
-        amount: string | BigNumber,
-        txParams?: TransactionParameters
-    ): Promise<void>;
+    transfer(to: string, amount: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
     allowance(owner: string, spender: string): Promise<BigNumber>;
     approve(
         spender: string,
-        amount: string | BigNumber,
+        amount: AllBigNumbers,
         txParams?: TransactionParameters
     ): Promise<void>;
     transferFrom(
         from: string,
         to: string,
-        amount: string | BigNumber,
+        amount: AllBigNumbers,
         txParams?: TransactionParameters
     ): Promise<void>;
 }
@@ -89,41 +86,37 @@ export interface ERC721Contract extends Contract {
     unlimitedGasSpend(): Promise<void>;
 
     balanceOf(owner: string): Promise<BigNumber>;
-    ownerOf(tokenId: string | BigNumber): Promise<string>;
+    ownerOf(tokenId: AllBigNumbers): Promise<string>;
     safeTransferFrom(
         from: string,
         to: string,
-        tokenId: string | BigNumber,
+        tokenId: AllBigNumbers,
         data: string,
         txParams?: TransactionParameters
     ): Promise<void>;
     safeTransferFrom(
         from: string,
         to: string,
-        tokenId: string | BigNumber,
+        tokenId: AllBigNumbers,
         txParams?: TransactionParameters
     ): Promise<void>;
     transferFrom(
         from: string,
         to: string,
-        tokenId: string | BigNumber,
+        tokenId: AllBigNumbers,
         txParams?: TransactionParameters
     ): Promise<void>;
-    approve(
-        to: string,
-        tokenId: string | BigNumber,
-        txParams?: TransactionParameters
-    ): Promise<void>;
+    approve(to: string, tokenId: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
     setApprovalForAll(
         operator: string,
         approved: boolean,
         txParams?: TransactionParameters
     ): Promise<void>;
-    getApproved(tokenId: string | BigNumber): Promise<string>;
+    getApproved(tokenId: AllBigNumbers): Promise<string>;
     isApprovedForAll(owner: string, operator: string): Promise<boolean>;
 
-    mint(id: string | BigNumber, txParams?: TransactionParameters): Promise<void>;
-    burn(id: string | BigNumber, txParams?: TransactionParameters): Promise<void>;
+    mint(id: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
+    burn(id: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
 }
 
 export interface ERC721WithERC2981Contract extends ERC721Contract {
@@ -134,10 +127,7 @@ export interface ERC721WithERC2981Contract extends ERC721Contract {
 
     defaultFee(): Promise<number>;
 
-    royaltyInfo(
-        tokenId: string | BigNumber,
-        salePrice: string | BigNumber
-    ): Promise<GetRoyaltyInfoRaw>;
+    royaltyInfo(tokenId: AllBigNumbers, salePrice: AllBigNumbers): Promise<GetRoyaltyInfoRaw>;
 }
 
 export interface ERC1155Contract extends Contract {
@@ -146,8 +136,8 @@ export interface ERC1155Contract extends Contract {
     revertTransfers(): Promise<void>;
     unlimitedGasSpend(): Promise<void>;
 
-    balanceOf(account: string, id: string | BigNumber): Promise<BigNumber>;
-    balanceOfBatch(accounts: string[], ids: string[] | BigNumber[]): Promise<BigNumber[]>;
+    balanceOf(account: string, id: AllBigNumbers): Promise<BigNumber>;
+    balanceOfBatch(accounts: string[], ids: AllBigNumbers[]): Promise<BigNumber[]>;
     setApprovalForAll(
         operator: string,
         approved: boolean,
@@ -157,72 +147,61 @@ export interface ERC1155Contract extends Contract {
     safeTransferFrom(
         from: string,
         to: string,
-        id: string | BigNumber,
-        amount: string | BigNumber,
+        id: AllBigNumbers,
+        amount: AllBigNumbers,
         data: string,
         txParams?: TransactionParameters
     ): Promise<void>;
     safeBatchTransferFrom(
         from: string,
         to: string,
-        ids: string[] | BigNumber[],
-        amounts: string[] | BigNumber[],
+        ids: AllBigNumbers[],
+        amounts: AllBigNumbers[],
         data: string,
         txParams?: TransactionParameters
     ): Promise<void>;
 
-    mint(
-        id: string | BigNumber,
-        amount: string | BigNumber,
-        txParams?: TransactionParameters
-    ): Promise<void>;
-    burn(
-        id: string | BigNumber,
-        amount: string | BigNumber[],
-        txParams?: TransactionParameters
-    ): Promise<void>;
+    mint(id: AllBigNumbers, amount: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
+    burn(id: AllBigNumbers, amount: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
     burnBatch(
-        ids: string[] | BigNumber[],
-        amounts: string[] | BigNumber[],
+        ids: AllBigNumbers[],
+        amounts: AllBigNumbers[],
         txParams?: TransactionParameters
     ): Promise<void>;
 }
 
-export interface RoyaltiesInfoContract {
+interface RoyaltiesInfoContract {
     royaltiesInfo(user: string): Promise<RoyaltyInfo>;
     defaultFeeForOwner(): Promise<number>;
     setRoyalty(
         token: string,
         royaltyReceiver: string,
-        royaltyPercentage: number | string | BigNumber,
+        royaltyPercentage: AllNumbers,
         txParams?: TransactionParameters
     ): Promise<void>;
-    setDefaultFeeForOwner(
-        newValue: number | string | BigNumber,
-        txParams?: TransactionParameters
-    ): Promise<void>;
+    setDefaultFeeForOwner(newValue: AllNumbers, txParams?: TransactionParameters): Promise<void>;
     disableAdminRoyalty(token: string, txParams?: TransactionParameters): Promise<void>;
 
     getRoyaltyInfo(
         token: string,
-        tokenId: string | BigNumber,
-        salePrice: string | BigNumber
+        tokenId: AllBigNumbers,
+        salePrice: AllBigNumbers
     ): Promise<GetRoyaltyInfoRaw>;
 }
 
-export interface AccessControlContract {
+interface AccessControlContract {
     hasRole(role: string, account: string): Promise<boolean>;
     getRoleAdmin(role: string): Promise<boolean>;
 
     getRoleMemberCount(role: string): Promise<BigNumber>;
-    getRoleMember(role: string, index: number | string | BigNumber): Promise<string>;
+    getRoleMember(role: string, index: AllNumbers): Promise<string>;
 
     grantRole(role: string, account: string): Promise<void>;
     revokeRole(role: string, account: string): Promise<void>;
     renounceRole(role: string, account: string): Promise<void>;
 }
 
-export interface ERC165Contract {
+interface ERC165Contract {
     supportsInterface(interfaceId: string): Promise<boolean>;
 }
 
@@ -232,6 +211,9 @@ export interface NftMarketplaceV2Contract
         ERC165Contract,
         Contract {
     connect(user: SignerWithAddress): NftMarketplaceV2Contract;
+
+    ROYALTY_MANAGER(): Promise<string>;
+    AUCTION_MANAGER(): Promise<string>;
 
     isPausedCreation(): Promise<boolean>;
     auctionData(auctionId: string): Promise<AuctionDataRaw>;
@@ -244,15 +226,12 @@ export interface NftMarketplaceV2Contract
         tokenInfo: TokenInfoRaw,
         startTime: number,
         endTime: number,
-        minPrice: string | BigNumber,
+        minPrice: AllBigNumbers,
         bidToken: string,
         txParams?: TransactionParameters
     ): Promise<void>;
-    bid(
-        auctionId: string,
-        amount: string | BigNumber,
-        txParams?: TransactionParameters
-    ): Promise<void>;
+    bid(auctionId: string, amount: AllBigNumbers, txParams?: TransactionParameters): Promise<void>;
+    bidNative(auctionId: string, txParams?: TransactionParameters): Promise<void>;
     endAuction(auctionId: string, txParams?: TransactionParameters): Promise<void>;
 
     deleteAuction(
@@ -264,16 +243,16 @@ export interface NftMarketplaceV2Contract
         txParams?: TransactionParameters
     ): Promise<void>;
 
-    setFeePercentage(
-        newValue: number | string | BigNumber,
+    setFeeInfo(
+        newValueFeePercentage: AllNumbers,
+        newValueFeeReceiver: string,
         txParams?: TransactionParameters
     ): Promise<void>;
-    setFeeReceiver(newValue: string, txParams?: TransactionParameters): Promise<void>;
 
     togglePause(txParams?: TransactionParameters): Promise<void>;
 
     activeAuctionsLength(): Promise<BigNumber>;
-    activeAuctionsAt(index: number | string | BigNumber): Promise<string>;
+    activeAuctionsAt(index: AllNumbers): Promise<string>;
     activeAuctionsContains(auctionId: string): Promise<boolean>;
 }
 
@@ -294,14 +273,20 @@ export interface PrepareEnvironmentResult {
     user1: SignerWithAddress;
     user2: SignerWithAddress;
     user3: SignerWithAddress;
+    royaltyManager: SignerWithAddress;
+    auctionManager: SignerWithAddress;
+
     timestampNow: number;
     feePercentage: BigNumber;
     defaultFeeForOwner: number;
     defaultERC2981Fee: number;
+
+    auctionManagerRole: string;
+    royaltyManagerRole: string;
 }
 
-export interface TransactionParameters {
-    value?: string | BigNumber;
-    gasPrice?: number | string | BigNumber;
-    gasLimit?: number | string | BigNumber;
+interface TransactionParameters {
+    value?: AllBigNumbers;
+    gasPrice?: AllNumbers;
+    gasLimit?: AllNumbers;
 }

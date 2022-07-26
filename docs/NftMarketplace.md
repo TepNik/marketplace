@@ -54,7 +54,7 @@ uint256 MAX_GAS_FOR_NATIVE_TRANSFER
 event SwapMade(struct EIP712.SignatureInfo signatureInfo, address seller, address buyer, bytes32 orderId)
 ```
 
-Event is emmited when an order is completed.
+Event is emitted when an order is completed.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -69,7 +69,7 @@ Event is emmited when an order is completed.
 event FeeTransferred(address feeReceiver, address token, uint256 amount)
 ```
 
-Event is emmited when fees of the marketplace were transferred.
+Event is emitted when fees of the marketplace were transferred.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -83,7 +83,7 @@ Event is emmited when fees of the marketplace were transferred.
 event RoyaltyTransferred(address royaltyReceiver, address token, uint256 amount)
 ```
 
-Event is emmited when royalties were transferred.
+Event is emitted when royalties were transferred.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -97,7 +97,7 @@ Event is emmited when royalties were transferred.
 event FeePercentageChange(address manager, uint256 oldValue, uint256 newValue)
 ```
 
-Event is emmited when an admin (`manager`) has set new fee percentages for the marketplace.
+Event is emitted when an admin (`manager`) has set new fee percentages for the marketplace.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -111,7 +111,7 @@ Event is emmited when an admin (`manager`) has set new fee percentages for the m
 event FeeReceiverChange(address manager, address oldValue, address newValue)
 ```
 
-Event is emmited when an admin (`manager`) has set new fee receiver for the marketplace.
+Event is emitted when an admin (`manager`) has set new fee receiver for the marketplace.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -125,7 +125,7 @@ Event is emmited when an admin (`manager`) has set new fee receiver for the mark
 event SwapsPaused(address manager)
 ```
 
-Event is emmited when an admin (`manager`) has paused the marketplace.
+Event is emitted when an admin (`manager`) has paused the marketplace.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -137,7 +137,7 @@ Event is emmited when an admin (`manager`) has paused the marketplace.
 event SwapsUnpaused(address manager)
 ```
 
-Event is emmited when an admin (`manager`) has unpaused the marketplace.
+Event is emitted when an admin (`manager`) has unpaused the marketplace.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |

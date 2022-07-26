@@ -37,18 +37,30 @@ const AddressZero = ethers.constants.AddressZero;
 const MaxUint256 = ethers.constants.MaxUint256;
 const Bytes32Zero = ethers.constants.HashZero;
 
+const EthAddress = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
 const OneHour = 3600;
 const OneDay = 86400;
 
 describe("NFT Marketplace V2 tests", function () {
     async function prepareEnvironment(): Promise<PrepareEnvironmentResult> {
-        const [deployer, feeReceiver, feeReceiverERC2981, user1, user2, user3] =
-            await ethers.getSigners();
+        const [
+            deployer,
+            feeReceiver,
+            feeReceiverERC2981,
+            user1,
+            user2,
+            user3,
+            royaltyManager,
+            auctionManager,
+        ] = await ethers.getSigners();
         tracer.nameTags[deployer.address] = "deployer";
         tracer.nameTags[feeReceiver.address] = "feeReceiver";
         tracer.nameTags[user1.address] = "user1";
         tracer.nameTags[user2.address] = "user2";
         tracer.nameTags[user3.address] = "user3";
+        tracer.nameTags[royaltyManager.address] = "royaltyManager";
+        tracer.nameTags[auctionManager.address] = "auctionManager";
 
         const TestERC20Factory = await ethers.getContractFactory("TestERC20");
         const tokenInst = <ERC20Contract>await TestERC20Factory.deploy();
@@ -98,6 +110,9 @@ describe("NFT Marketplace V2 tests", function () {
         const defaultFeeForOwner = await nftMarketplaceInst.defaultFeeForOwner();
         const defaultERC2981Fee = await erc721WithERC2981Inst.defaultFee();
 
+        const auctionManagerRole = await nftMarketplaceInst.AUCTION_MANAGER();
+        const royaltyManagerRole = await nftMarketplaceInst.ROYALTY_MANAGER();
+
         const timestampNow = await time.latest();
 
         return {
@@ -117,16 +132,48 @@ describe("NFT Marketplace V2 tests", function () {
             user1,
             user2,
             user3,
+            royaltyManager,
+            auctionManager,
+
             timestampNow,
             feePercentage,
             defaultFeeForOwner,
             defaultERC2981Fee,
+
+            auctionManagerRole,
+            royaltyManagerRole,
         };
+    }
+
+    async function prepareEnvironmentAndRoles(): Promise<PrepareEnvironmentResult> {
+        const result = await prepareEnvironment();
+
+        await result.nftMarketplaceInst.grantRole(
+            result.auctionManagerRole,
+            result.auctionManager.address
+        );
+        await result.nftMarketplaceInst.grantRole(
+            result.royaltyManagerRole,
+            result.royaltyManager.address
+        );
+
+        await result.nftMarketplaceInst.renounceRole(
+            result.auctionManagerRole,
+            result.deployer.address
+        );
+        await result.nftMarketplaceInst.renounceRole(
+            result.royaltyManagerRole,
+            result.deployer.address
+        );
+
+        result.timestampNow = await time.latest();
+
+        return result;
     }
 
     it("Deploy test", async () => {
         const { nftMarketplaceInst, feeReceiver } = <PrepareEnvironmentResult>(
-            await loadFixture(prepareEnvironment)
+            await loadFixture(prepareEnvironmentAndRoles)
         );
         expect(await nftMarketplaceInst.feeReceiver()).equals(feeReceiver.address);
         expect(await nftMarketplaceInst.isPausedCreation()).false;
@@ -134,7 +181,7 @@ describe("NFT Marketplace V2 tests", function () {
 
     it("ERC165 check", async () => {
         const { nftMarketplaceInst } = <PrepareEnvironmentResult>(
-            await loadFixture(prepareEnvironment)
+            await loadFixture(prepareEnvironmentAndRoles)
         );
 
         expect(await nftMarketplaceInst.supportsInterface("0x01ffc9a7")).to.be.true; // ERC165 interface id
@@ -147,7 +194,7 @@ describe("NFT Marketplace V2 tests", function () {
         it("Auction creation test", async () => {
             const { nftMarketplaceInst, erc721Inst, timestampNow, user1, tokenInst } = <
                 PrepareEnvironmentResult
-            >await loadFixture(prepareEnvironment);
+            >await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -160,9 +207,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -177,7 +223,7 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
@@ -208,7 +254,7 @@ describe("NFT Marketplace V2 tests", function () {
                 user3,
                 feePercentage,
                 feeReceiver,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -221,9 +267,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
-                bidToken: AddressZero,
-                lastBidAmount: Zero,
+                bidToken: EthAddress,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -239,7 +284,7 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
@@ -248,29 +293,30 @@ describe("NFT Marketplace V2 tests", function () {
             // first bid
             await nftMarketplaceInst
                 .connect(user2)
-                .bid(auctionId, auctionData.minPrice, { value: auctionData.minPrice });
+                .bidNative(auctionId, { value: auctionData.lastBidAmount });
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
             const user2EthBalanceBefore = await ethers.provider.getBalance(user2.address);
 
             // second bid
-            const endPrice = auctionData.minPrice.mul(2);
-            await nftMarketplaceInst.connect(user3).bid(auctionId, auctionData.minPrice.mul(2), {
+            const endPrice = auctionData.lastBidAmount.mul(2);
+            await nftMarketplaceInst.connect(user3).bidNative(auctionId, {
                 value: endPrice,
             });
 
-            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice.mul(2);
-            auctionData.lastBidder = user3.address;
-            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
             // check that previous bid was return
             const user2EthBalanceAfter = await ethers.provider.getBalance(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
+            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
+            auctionData.lastBidAmount = endPrice;
+            auctionData.lastBidder = user3.address;
+            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -336,7 +382,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -349,9 +395,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -360,11 +405,11 @@ describe("NFT Marketplace V2 tests", function () {
             await erc721Inst.connect(user1).setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenInst.connect(user2).mint(auctionData.minPrice);
+            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenInst.connect(user2).approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenInst.connect(user3).mint(endPrice);
             await tokenInst.connect(user3).approve(nftMarketplaceInst.address, MaxUint256);
 
@@ -376,17 +421,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -395,14 +439,16 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
+            // check that previous bid was return
+            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
             const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
             auctionData.lastBidAmount = endPrice;
             auctionData.lastBidder = user3.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
-            // check that previous bid was return
-            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -464,7 +510,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenTransferWithoutResultInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -477,9 +523,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenTransferWithoutResultInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -488,13 +533,13 @@ describe("NFT Marketplace V2 tests", function () {
             await erc721Inst.connect(user1).setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenTransferWithoutResultInst.connect(user2).mint(auctionData.minPrice);
+            await tokenTransferWithoutResultInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenTransferWithoutResultInst
                 .connect(user2)
                 .approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenTransferWithoutResultInst.connect(user3).mint(endPrice);
             await tokenTransferWithoutResultInst
                 .connect(user3)
@@ -508,17 +553,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -529,16 +573,18 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
-            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = endPrice;
-            auctionData.lastBidder = user3.address;
-            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
             // check that previous bid was return
             const user2EthBalanceAfter = await tokenTransferWithoutResultInst.balanceOf(
                 user2.address
             );
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
+            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
+            auctionData.lastBidAmount = endPrice;
+            auctionData.lastBidder = user3.address;
+            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -612,7 +658,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -625,9 +671,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -638,11 +683,11 @@ describe("NFT Marketplace V2 tests", function () {
                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenInst.connect(user2).mint(auctionData.minPrice);
+            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenInst.connect(user2).approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenInst.connect(user3).mint(endPrice);
             await tokenInst.connect(user3).approve(nftMarketplaceInst.address, MaxUint256);
 
@@ -654,17 +699,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -673,14 +717,16 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
+            // check that previous bid was return
+            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
             const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
             auctionData.lastBidAmount = endPrice;
             auctionData.lastBidder = user3.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
-            // check that previous bid was return
-            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -744,7 +790,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -757,9 +803,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -770,11 +815,11 @@ describe("NFT Marketplace V2 tests", function () {
                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenInst.connect(user2).mint(auctionData.minPrice);
+            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenInst.connect(user2).approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenInst.connect(user3).mint(endPrice);
             await tokenInst.connect(user3).approve(nftMarketplaceInst.address, MaxUint256);
 
@@ -786,17 +831,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -805,14 +849,16 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
+            // check that previous bid was return
+            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
             const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
             auctionData.lastBidAmount = endPrice;
             auctionData.lastBidder = user3.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
-            // check that previous bid was return
-            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -876,7 +922,7 @@ describe("NFT Marketplace V2 tests", function () {
                 user3,
                 feePercentage,
                 feeReceiver,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -889,9 +935,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
-                bidToken: AddressZero,
-                lastBidAmount: Zero,
+                bidToken: EthAddress,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -909,7 +954,7 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
@@ -918,29 +963,30 @@ describe("NFT Marketplace V2 tests", function () {
             // first bid
             await nftMarketplaceInst
                 .connect(user2)
-                .bid(auctionId, auctionData.minPrice, { value: auctionData.minPrice });
+                .bidNative(auctionId, { value: auctionData.lastBidAmount });
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
             const user2EthBalanceBefore = await ethers.provider.getBalance(user2.address);
 
             // second bid
-            const endPrice = auctionData.minPrice.mul(2);
-            await nftMarketplaceInst.connect(user3).bid(auctionId, auctionData.minPrice.mul(2), {
+            const endPrice = auctionData.lastBidAmount.mul(2);
+            await nftMarketplaceInst.connect(user3).bidNative(auctionId, {
                 value: endPrice,
             });
+
+            // check that previous bid was return
+            const user2EthBalanceAfter = await ethers.provider.getBalance(user2.address);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
 
             const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
             auctionData.lastBidAmount = endPrice;
             auctionData.lastBidder = user3.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
-            // check that previous bid was return
-            const user2EthBalanceAfter = await ethers.provider.getBalance(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -1008,7 +1054,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -1021,9 +1067,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -1034,11 +1079,11 @@ describe("NFT Marketplace V2 tests", function () {
             await erc1155Inst.connect(user1).setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenInst.connect(user2).mint(auctionData.minPrice);
+            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenInst.connect(user2).approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenInst.connect(user3).mint(endPrice);
             await tokenInst.connect(user3).approve(nftMarketplaceInst.address, MaxUint256);
 
@@ -1050,17 +1095,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -1069,14 +1113,16 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
+            // check that previous bid was return
+            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
             const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
             auctionData.lastBidAmount = endPrice;
             auctionData.lastBidder = user3.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
-            // check that previous bid was return
-            const user2EthBalanceAfter = await tokenInst.balanceOf(user2.address);
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -1140,7 +1186,7 @@ describe("NFT Marketplace V2 tests", function () {
                 feePercentage,
                 feeReceiver,
                 tokenTransferWithoutResultInst,
-            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -1153,9 +1199,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenTransferWithoutResultInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -1166,13 +1211,13 @@ describe("NFT Marketplace V2 tests", function () {
             await erc1155Inst.connect(user1).setApprovalForAll(nftMarketplaceInst.address, true);
 
             // mint ERC20 to user2
-            await tokenTransferWithoutResultInst.connect(user2).mint(auctionData.minPrice);
+            await tokenTransferWithoutResultInst.connect(user2).mint(auctionData.lastBidAmount);
             await tokenTransferWithoutResultInst
                 .connect(user2)
                 .approve(nftMarketplaceInst.address, MaxUint256);
 
             // mint ERC20 to user3
-            const endPrice = auctionData.minPrice.mul(2);
+            const endPrice = auctionData.lastBidAmount.mul(2);
             await tokenTransferWithoutResultInst.connect(user3).mint(endPrice);
             await tokenTransferWithoutResultInst
                 .connect(user3)
@@ -1186,17 +1231,16 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
             await time.increaseTo(auctionData.startTime);
 
             // first bid
-            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.minPrice);
+            await nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount);
 
             const auctionDataFromContractBid1 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = auctionData.minPrice;
             auctionData.lastBidder = user2.address;
             compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid1);
 
@@ -1207,16 +1251,18 @@ describe("NFT Marketplace V2 tests", function () {
             // second bid
             await nftMarketplaceInst.connect(user3).bid(auctionId, endPrice);
 
-            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
-            auctionData.lastBidAmount = endPrice;
-            auctionData.lastBidder = user3.address;
-            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
-
             // check that previous bid was return
             const user2EthBalanceAfter = await tokenTransferWithoutResultInst.balanceOf(
                 user2.address
             );
-            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(auctionData.minPrice);
+            expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).equals(
+                auctionData.lastBidAmount
+            );
+
+            const auctionDataFromContractBid2 = await nftMarketplaceInst.auctionData(auctionId);
+            auctionData.lastBidAmount = endPrice;
+            auctionData.lastBidder = user3.address;
+            compareAuctionDataWithRaw(auctionData, auctionDataFromContractBid2);
 
             // get info about royalties and balances before execution of the auction
             const royaltyInfo = await nftMarketplaceInst.getRoyaltyInfo(
@@ -1284,7 +1330,7 @@ describe("NFT Marketplace V2 tests", function () {
         it("Auction ERC721 with no bids", async () => {
             const { nftMarketplaceInst, erc721Inst, timestampNow, user1, tokenInst } = <
                 PrepareEnvironmentResult
-            >await loadFixture(prepareEnvironment);
+            >await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -1297,9 +1343,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -1315,7 +1360,7 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
@@ -1336,7 +1381,7 @@ describe("NFT Marketplace V2 tests", function () {
         it("Auction ERC1155 with no bids", async () => {
             const { nftMarketplaceInst, erc1155Inst, timestampNow, user1, tokenInst } = <
                 PrepareEnvironmentResult
-            >await loadFixture(prepareEnvironment);
+            >await loadFixture(prepareEnvironmentAndRoles);
 
             // set parameters for auction
             const auctionData: AuctionData = {
@@ -1349,9 +1394,8 @@ describe("NFT Marketplace V2 tests", function () {
                 seller: user1.address,
                 startTime: timestampNow + OneHour,
                 endTime: timestampNow + OneHour + OneDay,
-                minPrice: OneToken.mul(10),
                 bidToken: tokenInst.address,
-                lastBidAmount: Zero,
+                lastBidAmount: OneToken.mul(10),
                 lastBidder: AddressZero,
             };
 
@@ -1369,7 +1413,7 @@ describe("NFT Marketplace V2 tests", function () {
                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                     auctionData.startTime,
                     auctionData.endTime,
-                    auctionData.minPrice,
+                    auctionData.lastBidAmount,
                     auctionData.bidToken
                 );
 
@@ -1392,11 +1436,11 @@ describe("NFT Marketplace V2 tests", function () {
         describe("Reverts", () => {
             describe("{createAuction} function", () => {
                 it("Should revert in case of pause", async () => {
-                    const { nftMarketplaceInst, erc721Inst, erc1155Inst, timestampNow } = <
-                        PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    const { nftMarketplaceInst, auctionManager } = <PrepareEnvironmentResult>(
+                        await loadFixture(prepareEnvironmentAndRoles)
+                    );
 
-                    await nftMarketplaceInst.togglePause();
+                    await nftMarketplaceInst.connect(auctionManager).togglePause();
 
                     await expect(
                         nftMarketplaceInst.createAuction(
@@ -1417,7 +1461,7 @@ describe("NFT Marketplace V2 tests", function () {
                 it("Should revert in case of a bad tokenInfo", async () => {
                     const { nftMarketplaceInst, erc721Inst, erc1155Inst, timestampNow } = <
                         PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    >await loadFixture(prepareEnvironmentAndRoles);
 
                     await expect(
                         nftMarketplaceInst.createAuction(
@@ -1528,7 +1572,7 @@ describe("NFT Marketplace V2 tests", function () {
                 it("Should revert in case of a bad start/end time", async () => {
                     const { nftMarketplaceInst, erc721Inst, timestampNow } = <
                         PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    >await loadFixture(prepareEnvironmentAndRoles);
 
                     await expect(
                         nftMarketplaceInst.createAuction(
@@ -1541,7 +1585,7 @@ describe("NFT Marketplace V2 tests", function () {
                             timestampNow + OneDay,
                             timestampNow + OneHour,
                             Zero,
-                            AddressZero
+                            EthAddress
                         )
                     ).to.be.revertedWith("NftMarketplaceV2: Wrong start/end time");
 
@@ -1556,7 +1600,7 @@ describe("NFT Marketplace V2 tests", function () {
                             timestampNow - OneDay,
                             timestampNow - OneHour,
                             Zero,
-                            AddressZero
+                            EthAddress
                         )
                     ).to.be.revertedWith("NftMarketplaceV2: Wrong start/end time");
                 });
@@ -1564,7 +1608,7 @@ describe("NFT Marketplace V2 tests", function () {
                 it("Should revert in case of a bad bid token info", async () => {
                     const { nftMarketplaceInst, erc721Inst, timestampNow, user1 } = <
                         PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    >await loadFixture(prepareEnvironmentAndRoles);
 
                     await expect(
                         nftMarketplaceInst.createAuction(
@@ -1598,9 +1642,8 @@ describe("NFT Marketplace V2 tests", function () {
                 });
 
                 it("Should revert in case of double creation", async () => {
-                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, deployer } = <
-                        PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, auctionManager } =
+                        <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                     const auctionData: AuctionData = {
                         tokenInfo: {
@@ -1612,9 +1655,8 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: AddressZero,
-                        lastBidAmount: Zero,
+                        bidToken: EthAddress,
+                        lastBidAmount: OneToken.mul(10),
                         lastBidder: AddressZero,
                     };
 
@@ -1630,7 +1672,7 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                             auctionData.startTime,
                             auctionData.endTime,
-                            auctionData.minPrice,
+                            auctionData.lastBidAmount,
                             auctionData.bidToken
                         );
 
@@ -1643,13 +1685,13 @@ describe("NFT Marketplace V2 tests", function () {
                                 tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                 auctionData.startTime,
                                 auctionData.endTime,
-                                auctionData.minPrice,
+                                auctionData.lastBidAmount,
                                 auctionData.bidToken
                             )
                     ).to.be.revertedWith("NftMarketplaceV2: Existing auction");
 
                     await nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(auctionManager)
                         .deleteAuction(auctionId, true, false, true, false);
 
                     await expect(
@@ -1659,7 +1701,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                 auctionData.startTime,
                                 auctionData.endTime,
-                                auctionData.minPrice,
+                                auctionData.lastBidAmount,
                                 auctionData.bidToken
                             )
                     ).to.be.revertedWith("NftMarketplaceV2: Auction is completed");
@@ -1669,18 +1711,23 @@ describe("NFT Marketplace V2 tests", function () {
             describe("{bid} function", () => {
                 it("Should revert in case of a bid to not active order", async () => {
                     const { nftMarketplaceInst } = <PrepareEnvironmentResult>(
-                        await loadFixture(prepareEnvironment)
+                        await loadFixture(prepareEnvironmentAndRoles)
                     );
 
-                    await expect(nftMarketplaceInst.bid(Bytes32Zero, Zero)).to.be.revertedWith(
+                    await expect(nftMarketplaceInst.bid(Bytes32Zero, "0")).to.be.revertedWith(
                         "NftMarketplaceV2: No such open auction"
                     );
                 });
 
                 it("Should revert in case of a bad bid time", async () => {
-                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
-                        PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    const {
+                        nftMarketplaceInst,
+                        erc721Inst,
+                        tokenInst,
+                        timestampNow,
+                        user1,
+                        user2,
+                    } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                     const auctionData: AuctionData = {
                         tokenInfo: {
@@ -1692,9 +1739,8 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: AddressZero,
-                        lastBidAmount: Zero,
+                        bidToken: tokenInst.address,
+                        lastBidAmount: OneToken.mul(10),
                         lastBidder: AddressZero,
                     };
 
@@ -1710,29 +1756,30 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                             auctionData.startTime,
                             auctionData.endTime,
-                            auctionData.minPrice,
+                            auctionData.lastBidAmount,
                             auctionData.bidToken
                         );
 
                     await expect(
-                        nftMarketplaceInst
-                            .connect(user2)
-                            .bid(auctionId, auctionData.minPrice, { value: auctionData.minPrice })
+                        nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount)
                     ).to.be.revertedWith("NftMarketplaceV2: Auction is not started");
 
                     await time.increaseTo(auctionData.endTime);
 
                     await expect(
-                        nftMarketplaceInst
-                            .connect(user2)
-                            .bid(auctionId, auctionData.minPrice, { value: auctionData.minPrice })
+                        nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount)
                     ).to.be.revertedWith("NftMarketplaceV2: Auction has ended");
                 });
 
                 it("Should revert in case of a bad amount", async () => {
-                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
-                        PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    const {
+                        nftMarketplaceInst,
+                        erc721Inst,
+                        tokenInst,
+                        timestampNow,
+                        user1,
+                        user2,
+                    } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                     const auctionData1: AuctionData = {
                         tokenInfo: {
@@ -1744,9 +1791,8 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: AddressZero,
-                        lastBidAmount: Zero,
+                        bidToken: tokenInst.address,
+                        lastBidAmount: OneToken.mul(10),
                         lastBidder: AddressZero,
                     };
                     const auctionData2: AuctionData = {
@@ -1759,8 +1805,7 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: Zero,
-                        bidToken: AddressZero,
+                        bidToken: EthAddress,
                         lastBidAmount: Zero,
                         lastBidder: AddressZero,
                     };
@@ -1771,6 +1816,9 @@ describe("NFT Marketplace V2 tests", function () {
                         .connect(user1)
                         .setApprovalForAll(nftMarketplaceInst.address, true);
 
+                    await tokenInst.connect(user2).mint(auctionData1.lastBidAmount);
+                    await tokenInst.connect(user2).approve(nftMarketplaceInst.address, MaxUint256);
+
                     const auctionId1 = getAuctionId(auctionData1);
                     const auctionId2 = getAuctionId(auctionData2);
                     await nftMarketplaceInst
@@ -1779,7 +1827,7 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData1.tokenInfo),
                             auctionData1.startTime,
                             auctionData1.endTime,
-                            auctionData1.minPrice,
+                            auctionData1.lastBidAmount,
                             auctionData1.bidToken
                         );
                     await nftMarketplaceInst
@@ -1788,7 +1836,7 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData2.tokenInfo),
                             auctionData2.startTime,
                             auctionData2.endTime,
-                            auctionData2.minPrice,
+                            auctionData2.lastBidAmount,
                             auctionData2.bidToken
                         );
 
@@ -1798,36 +1846,140 @@ describe("NFT Marketplace V2 tests", function () {
                     await expect(
                         nftMarketplaceInst
                             .connect(user2)
-                            .bid(auctionId1, auctionData1.minPrice.sub(1), {
-                                value: auctionData1.minPrice.sub(1),
-                            })
+                            .bid(auctionId1, auctionData1.lastBidAmount.sub(1))
                     ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
 
                     await nftMarketplaceInst
                         .connect(user2)
-                        .bid(auctionId1, auctionData1.minPrice, { value: auctionData1.minPrice });
+                        .bid(auctionId1, auctionData1.lastBidAmount);
 
                     await expect(
-                        nftMarketplaceInst.connect(user2).bid(auctionId1, auctionData1.minPrice, {
-                            value: auctionData1.minPrice,
-                        })
+                        nftMarketplaceInst
+                            .connect(user2)
+                            .bid(auctionId1, auctionData1.lastBidAmount)
                     ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
 
                     // test auction 2 zero amount
                     await expect(
-                        nftMarketplaceInst.connect(user2).bid(auctionId2, Zero)
+                        nftMarketplaceInst.connect(user2).bid(auctionId2, "0")
                     ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
                 });
 
-                it("Should revert in case of a bad value (ETH attached to the call)", async () => {
+                it("Should revert in case of a wrong auction (bid to auction with ETH)", async () => {
                     const {
                         nftMarketplaceInst,
                         erc721Inst,
+                        tokenInst,
                         timestampNow,
                         user1,
                         user2,
-                        tokenInst,
-                    } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                    } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
+
+                    const auctionData: AuctionData = {
+                        tokenInfo: {
+                            tokenType: TokenType.ERC721,
+                            tokenAddress: erc721Inst.address,
+                            id: One,
+                            amount: Zero,
+                        },
+                        seller: user1.address,
+                        startTime: timestampNow + OneHour,
+                        endTime: timestampNow + OneHour + OneDay,
+                        bidToken: EthAddress,
+                        lastBidAmount: OneToken.mul(10),
+                        lastBidder: AddressZero,
+                    };
+
+                    await erc721Inst.connect(user1).mint(auctionData.tokenInfo.id);
+                    await erc721Inst
+                        .connect(user1)
+                        .setApprovalForAll(nftMarketplaceInst.address, true);
+
+                    const auctionId = getAuctionId(auctionData);
+                    await nftMarketplaceInst
+                        .connect(user1)
+                        .createAuction(
+                            tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
+                            auctionData.startTime,
+                            auctionData.endTime,
+                            auctionData.lastBidAmount,
+                            auctionData.bidToken
+                        );
+
+                    await time.increaseTo(auctionData.startTime);
+
+                    await expect(
+                        nftMarketplaceInst.connect(user2).bid(auctionId, auctionData.lastBidAmount)
+                    ).to.be.revertedWith("NftMarketplaceV2: Token is not a contract");
+                });
+            });
+
+            describe("{bidNative} function", () => {
+                it("Should revert in case of a bid to not active order", async () => {
+                    const { nftMarketplaceInst } = <PrepareEnvironmentResult>(
+                        await loadFixture(prepareEnvironmentAndRoles)
+                    );
+
+                    await expect(nftMarketplaceInst.bidNative(Bytes32Zero)).to.be.revertedWith(
+                        "NftMarketplaceV2: No such open auction"
+                    );
+                });
+
+                it("Should revert in case of a bad bid time", async () => {
+                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
+                        PrepareEnvironmentResult
+                    >await loadFixture(prepareEnvironmentAndRoles);
+
+                    const auctionData: AuctionData = {
+                        tokenInfo: {
+                            tokenType: TokenType.ERC721,
+                            tokenAddress: erc721Inst.address,
+                            id: One,
+                            amount: Zero,
+                        },
+                        seller: user1.address,
+                        startTime: timestampNow + OneHour,
+                        endTime: timestampNow + OneHour + OneDay,
+                        bidToken: EthAddress,
+                        lastBidAmount: OneToken.mul(10),
+                        lastBidder: AddressZero,
+                    };
+
+                    await erc721Inst.connect(user1).mint(auctionData.tokenInfo.id);
+                    await erc721Inst
+                        .connect(user1)
+                        .setApprovalForAll(nftMarketplaceInst.address, true);
+
+                    const auctionId = getAuctionId(auctionData);
+                    await nftMarketplaceInst
+                        .connect(user1)
+                        .createAuction(
+                            tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
+                            auctionData.startTime,
+                            auctionData.endTime,
+                            auctionData.lastBidAmount,
+                            auctionData.bidToken
+                        );
+
+                    await expect(
+                        nftMarketplaceInst
+                            .connect(user2)
+                            .bidNative(auctionId, { value: auctionData.lastBidAmount })
+                    ).to.be.revertedWith("NftMarketplaceV2: Auction is not started");
+
+                    await time.increaseTo(auctionData.endTime);
+
+                    await expect(
+                        nftMarketplaceInst
+                            .connect(user2)
+                            .bidNative(auctionId, { value: auctionData.lastBidAmount })
+                    ).to.be.revertedWith("NftMarketplaceV2: Auction has ended");
+                });
+
+                it("Should revert in case of a bad amount", async () => {
+                    const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
+                        PrepareEnvironmentResult
+                    >await loadFixture(prepareEnvironmentAndRoles);
 
                     const auctionData1: AuctionData = {
                         tokenInfo: {
@@ -1839,9 +1991,8 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: AddressZero,
-                        lastBidAmount: Zero,
+                        bidToken: EthAddress,
+                        lastBidAmount: OneToken.mul(10),
                         lastBidder: AddressZero,
                     };
                     const auctionData2: AuctionData = {
@@ -1854,8 +2005,7 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: tokenInst.address,
+                        bidToken: EthAddress,
                         lastBidAmount: Zero,
                         lastBidder: AddressZero,
                     };
@@ -1874,7 +2024,7 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData1.tokenInfo),
                             auctionData1.startTime,
                             auctionData1.endTime,
-                            auctionData1.minPrice,
+                            auctionData1.lastBidAmount,
                             auctionData1.bidToken
                         );
                     await nftMarketplaceInst
@@ -1883,35 +2033,90 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData2.tokenInfo),
                             auctionData2.startTime,
                             auctionData2.endTime,
-                            auctionData2.minPrice,
+                            auctionData2.lastBidAmount,
                             auctionData2.bidToken
                         );
 
                     await time.increaseTo(auctionData1.startTime);
 
+                    // test auction 1
                     await expect(
-                        nftMarketplaceInst.connect(user2).bid(auctionId1, auctionData1.minPrice, {
-                            value: auctionData1.minPrice.sub(1),
+                        nftMarketplaceInst.connect(user2).bidNative(auctionId1, {
+                            value: auctionData1.lastBidAmount.sub(1),
                         })
-                    ).to.be.revertedWith("NftMarketplaceV2: Wrong amount");
+                    ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
+
+                    await nftMarketplaceInst
+                        .connect(user2)
+                        .bidNative(auctionId1, { value: auctionData1.lastBidAmount });
+
                     await expect(
-                        nftMarketplaceInst.connect(user2).bid(auctionId1, auctionData1.minPrice, {
-                            value: auctionData1.minPrice.add(1),
+                        nftMarketplaceInst.connect(user2).bidNative(auctionId1, {
+                            value: auctionData1.lastBidAmount,
                         })
-                    ).to.be.revertedWith("NftMarketplaceV2: Wrong amount");
+                    ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
+
+                    // test auction 2 zero amount
+                    await expect(
+                        nftMarketplaceInst.connect(user2).bidNative(auctionId2)
+                    ).to.be.revertedWith("NftMarketplaceV2: Too low amount");
+                });
+
+                it("Should revert in case of a wrong auction (bid to auction with ERC20)", async () => {
+                    const {
+                        nftMarketplaceInst,
+                        erc721Inst,
+                        tokenInst,
+                        timestampNow,
+                        user1,
+                        user2,
+                    } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
+
+                    const auctionData: AuctionData = {
+                        tokenInfo: {
+                            tokenType: TokenType.ERC721,
+                            tokenAddress: erc721Inst.address,
+                            id: One,
+                            amount: Zero,
+                        },
+                        seller: user1.address,
+                        startTime: timestampNow + OneHour,
+                        endTime: timestampNow + OneHour + OneDay,
+                        bidToken: tokenInst.address,
+                        lastBidAmount: OneToken.mul(10),
+                        lastBidder: AddressZero,
+                    };
+
+                    await erc721Inst.connect(user1).mint(auctionData.tokenInfo.id);
+                    await erc721Inst
+                        .connect(user1)
+                        .setApprovalForAll(nftMarketplaceInst.address, true);
+
+                    const auctionId = getAuctionId(auctionData);
+                    await nftMarketplaceInst
+                        .connect(user1)
+                        .createAuction(
+                            tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
+                            auctionData.startTime,
+                            auctionData.endTime,
+                            auctionData.lastBidAmount,
+                            auctionData.bidToken
+                        );
+
+                    await time.increaseTo(auctionData.startTime);
 
                     await expect(
                         nftMarketplaceInst
                             .connect(user2)
-                            .bid(auctionId2, auctionData1.minPrice, { value: One })
-                    ).to.be.revertedWith("NftMarketplaceV2: Not native, need no value");
+                            .bidNative(auctionId, { value: auctionData.lastBidAmount })
+                    ).to.be.revertedWith("NftMarketplaceV2: Use {bid} function");
                 });
             });
 
             describe("{endAuction} function", async () => {
                 it("Should revert in case of a not active order", async () => {
                     const { nftMarketplaceInst } = <PrepareEnvironmentResult>(
-                        await loadFixture(prepareEnvironment)
+                        await loadFixture(prepareEnvironmentAndRoles)
                     );
 
                     await expect(nftMarketplaceInst.endAuction(Bytes32Zero)).to.be.revertedWith(
@@ -1922,7 +2127,7 @@ describe("NFT Marketplace V2 tests", function () {
                 it("Should revert in case of a bad time", async () => {
                     const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
                         PrepareEnvironmentResult
-                    >await loadFixture(prepareEnvironment);
+                    >await loadFixture(prepareEnvironmentAndRoles);
 
                     const auctionData: AuctionData = {
                         tokenInfo: {
@@ -1934,9 +2139,8 @@ describe("NFT Marketplace V2 tests", function () {
                         seller: user1.address,
                         startTime: timestampNow + OneHour,
                         endTime: timestampNow + OneHour + OneDay,
-                        minPrice: OneToken.mul(10),
-                        bidToken: AddressZero,
-                        lastBidAmount: Zero,
+                        bidToken: EthAddress,
+                        lastBidAmount: OneToken.mul(10),
                         lastBidder: AddressZero,
                     };
 
@@ -1952,7 +2156,7 @@ describe("NFT Marketplace V2 tests", function () {
                             tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                             auctionData.startTime,
                             auctionData.endTime,
-                            auctionData.minPrice,
+                            auctionData.lastBidAmount,
                             auctionData.bidToken
                         );
 
@@ -1987,90 +2191,195 @@ describe("NFT Marketplace V2 tests", function () {
 
     describe("Admin functions", () => {
         it("Check initial roles", async () => {
-            const { nftMarketplaceInst, deployer } = <PrepareEnvironmentResult>(
-                await loadFixture(prepareEnvironment)
-            );
+            const {
+                nftMarketplaceInst,
+                deployer,
+                royaltyManager,
+                royaltyManagerRole,
+                auctionManager,
+                auctionManagerRole,
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
 
             expect(await nftMarketplaceInst.hasRole(Bytes32Zero, deployer.address)).to.be.true;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, deployer.address)).to.be
+                .true;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, deployer.address)).to.be
+                .true;
+
+            expect(await nftMarketplaceInst.hasRole(Bytes32Zero, royaltyManager.address)).to.be
+                .false;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, royaltyManager.address)).to
+                .be.false;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, royaltyManager.address)).to
+                .be.false;
+
+            expect(await nftMarketplaceInst.hasRole(Bytes32Zero, auctionManager.address)).to.be
+                .false;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, auctionManager.address)).to
+                .be.false;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, auctionManager.address)).to
+                .be.false;
+
             expect(await nftMarketplaceInst.getRoleMemberCount(Bytes32Zero)).to.be.equals(1);
             expect(await nftMarketplaceInst.getRoleMember(Bytes32Zero, 0)).to.be.equals(
                 deployer.address
             );
+
+            expect(await nftMarketplaceInst.getRoleMemberCount(royaltyManagerRole)).to.be.equals(1);
+            expect(await nftMarketplaceInst.getRoleMember(royaltyManagerRole, 0)).to.be.equals(
+                deployer.address
+            );
+
+            expect(await nftMarketplaceInst.getRoleMemberCount(auctionManagerRole)).to.be.equals(1);
+            expect(await nftMarketplaceInst.getRoleMember(auctionManagerRole, 0)).to.be.equals(
+                deployer.address
+            );
         });
 
-        it("{setFeePercentage} function", async () => {
-            const { nftMarketplaceInst, feePercentage, deployer, user1 } = <
-                PrepareEnvironmentResult
-            >await loadFixture(prepareEnvironment);
+        it("Check initial roles after setting roles", async () => {
+            const {
+                nftMarketplaceInst,
+                deployer,
+                royaltyManager,
+                royaltyManagerRole,
+                auctionManager,
+                auctionManagerRole,
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
+
+            expect(await nftMarketplaceInst.hasRole(Bytes32Zero, deployer.address)).to.be.true;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, deployer.address)).to.be
+                .false;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, deployer.address)).to.be
+                .false;
+
+            expect(await nftMarketplaceInst.hasRole(Bytes32Zero, royaltyManager.address)).to.be
+                .false;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, royaltyManager.address)).to
+                .be.true;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, royaltyManager.address)).to
+                .be.false;
+
+            expect(await nftMarketplaceInst.hasRole(Bytes32Zero, auctionManager.address)).to.be
+                .false;
+            expect(await nftMarketplaceInst.hasRole(royaltyManagerRole, auctionManager.address)).to
+                .be.false;
+            expect(await nftMarketplaceInst.hasRole(auctionManagerRole, auctionManager.address)).to
+                .be.true;
+
+            expect(await nftMarketplaceInst.getRoleMemberCount(Bytes32Zero)).to.be.equals(1);
+            expect(await nftMarketplaceInst.getRoleMember(Bytes32Zero, 0)).to.be.equals(
+                deployer.address
+            );
+
+            expect(await nftMarketplaceInst.getRoleMemberCount(royaltyManagerRole)).to.be.equals(1);
+            expect(await nftMarketplaceInst.getRoleMember(royaltyManagerRole, 0)).to.be.equals(
+                royaltyManager.address
+            );
+
+            expect(await nftMarketplaceInst.getRoleMemberCount(auctionManagerRole)).to.be.equals(1);
+            expect(await nftMarketplaceInst.getRoleMember(auctionManagerRole, 0)).to.be.equals(
+                auctionManager.address
+            );
+        });
+
+        it("{setFeeInfo} function", async () => {
+            const {
+                nftMarketplaceInst,
+                feePercentage,
+                user1,
+                auctionManagerRole,
+                auctionManager,
+                deployer,
+                royaltyManager,
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             await expect(
-                nftMarketplaceInst.connect(deployer).setFeePercentage(feePercentage)
-            ).to.be.revertedWith("NftMarketplaceV2: No change");
-            await expect(
-                nftMarketplaceInst.connect(deployer).setFeePercentage(10_01)
+                nftMarketplaceInst.connect(auctionManager).setFeeInfo(10_01, AddressZero)
             ).to.be.revertedWith("NftMarketplaceV2: Too big percentage");
             await expect(
-                nftMarketplaceInst.connect(user1).setFeePercentage(10_00)
-            ).to.be.revertedWith(
-                "AccessControl: account " +
-                    user1.address.toLowerCase() +
-                    " is missing role " +
-                    Bytes32Zero
-            );
-
-            const newValue = 10_00;
-            await nftMarketplaceInst.connect(deployer).setFeePercentage(newValue);
-            expect(await nftMarketplaceInst.feePercentage()).to.be.equals(newValue);
-        });
-
-        it("{setFeeReceiver} function", async () => {
-            const { nftMarketplaceInst, feeReceiver, deployer, user1 } = <PrepareEnvironmentResult>(
-                await loadFixture(prepareEnvironment)
-            );
-
-            await expect(
-                nftMarketplaceInst.connect(deployer).setFeeReceiver(feeReceiver.address)
-            ).to.be.revertedWith("NftMarketplaceV2: No change");
-            await expect(
-                nftMarketplaceInst.connect(deployer).setFeeReceiver(AddressZero)
+                nftMarketplaceInst.connect(auctionManager).setFeeInfo(10_00, AddressZero)
             ).to.be.revertedWith("NftMarketplaceV2: Zero address");
 
-            const newValue = deployer.address;
             await expect(
-                nftMarketplaceInst.connect(user1).setFeeReceiver(newValue)
+                nftMarketplaceInst.connect(user1).setFeeInfo(10_00, AddressZero)
             ).to.be.revertedWith(
                 "AccessControl: account " +
                     user1.address.toLowerCase() +
                     " is missing role " +
-                    Bytes32Zero
+                    auctionManagerRole
+            );
+            await expect(
+                nftMarketplaceInst.connect(deployer).setFeeInfo(10_00, AddressZero)
+            ).to.be.revertedWith(
+                "AccessControl: account " +
+                    deployer.address.toLowerCase() +
+                    " is missing role " +
+                    auctionManagerRole
+            );
+            await expect(
+                nftMarketplaceInst.connect(royaltyManager).setFeeInfo(10_00, AddressZero)
+            ).to.be.revertedWith(
+                "AccessControl: account " +
+                    royaltyManager.address.toLowerCase() +
+                    " is missing role " +
+                    auctionManagerRole
             );
 
-            await nftMarketplaceInst.connect(deployer).setFeeReceiver(newValue);
-            expect(await nftMarketplaceInst.feeReceiver()).to.be.equals(newValue);
+            const newValueFeePercentage = 10_00;
+            const newValueFeeReceiver = user1.address;
+            await nftMarketplaceInst
+                .connect(auctionManager)
+                .setFeeInfo(newValueFeePercentage, newValueFeeReceiver);
+            expect(await nftMarketplaceInst.feePercentage()).to.be.equals(newValueFeePercentage);
+            expect(await nftMarketplaceInst.feeReceiver()).to.be.equals(newValueFeeReceiver);
         });
 
         it("{togglePause} function", async () => {
-            const { nftMarketplaceInst, feeReceiver, deployer, user1 } = <PrepareEnvironmentResult>(
-                await loadFixture(prepareEnvironment)
-            );
+            const {
+                nftMarketplaceInst,
+                deployer,
+                user1,
+                auctionManagerRole,
+                auctionManager,
+                royaltyManager,
+            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
             expect(await nftMarketplaceInst.isPausedCreation()).to.be.false;
             await expect(nftMarketplaceInst.connect(user1).togglePause()).to.be.revertedWith(
                 "AccessControl: account " +
                     user1.address.toLowerCase() +
                     " is missing role " +
-                    Bytes32Zero
+                    auctionManagerRole
+            );
+            await expect(nftMarketplaceInst.connect(deployer).togglePause()).to.be.revertedWith(
+                "AccessControl: account " +
+                    deployer.address.toLowerCase() +
+                    " is missing role " +
+                    auctionManagerRole
+            );
+            await expect(
+                nftMarketplaceInst.connect(royaltyManager).togglePause()
+            ).to.be.revertedWith(
+                "AccessControl: account " +
+                    royaltyManager.address.toLowerCase() +
+                    " is missing role " +
+                    auctionManagerRole
             );
 
-            await nftMarketplaceInst.connect(deployer).togglePause();
+            await nftMarketplaceInst.connect(auctionManager).togglePause();
             expect(await nftMarketplaceInst.isPausedCreation()).to.be.true;
         });
 
         describe("{deleteAuction} function", () => {
             it("Reverts", async () => {
-                const { nftMarketplaceInst, deployer, user1 } = <PrepareEnvironmentResult>(
-                    await loadFixture(prepareEnvironment)
-                );
+                const {
+                    nftMarketplaceInst,
+                    deployer,
+                    auctionManager,
+                    royaltyManager,
+                    user1,
+                    auctionManagerRole,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 await expect(
                     nftMarketplaceInst
@@ -2080,20 +2389,40 @@ describe("NFT Marketplace V2 tests", function () {
                     "AccessControl: account " +
                         user1.address.toLowerCase() +
                         " is missing role " +
-                        Bytes32Zero
+                        auctionManagerRole
+                );
+                await expect(
+                    nftMarketplaceInst
+                        .connect(deployer)
+                        .deleteAuction(Bytes32Zero, true, true, true, true)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        deployer.address.toLowerCase() +
+                        " is missing role " +
+                        auctionManagerRole
+                );
+                await expect(
+                    nftMarketplaceInst
+                        .connect(royaltyManager)
+                        .deleteAuction(Bytes32Zero, true, true, true, true)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        royaltyManager.address.toLowerCase() +
+                        " is missing role " +
+                        auctionManagerRole
                 );
 
                 await expect(
                     nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(auctionManager)
                         .deleteAuction(Bytes32Zero, true, true, true, true)
                 ).to.be.revertedWith("NftMarketplaceV2: No such open auction");
             });
 
             it("Auction without bids", async () => {
-                const { nftMarketplaceInst, erc721Inst, timestampNow, user1 } = <
+                const { nftMarketplaceInst, erc721Inst, timestampNow, user1, auctionManager } = <
                     PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                >await loadFixture(prepareEnvironmentAndRoles);
 
                 // set parameters for auction
                 const auctionData: AuctionData = {
@@ -2106,9 +2435,8 @@ describe("NFT Marketplace V2 tests", function () {
                     seller: user1.address,
                     startTime: timestampNow + OneHour,
                     endTime: timestampNow + OneHour + OneDay,
-                    minPrice: OneToken.mul(10),
-                    bidToken: AddressZero,
-                    lastBidAmount: Zero,
+                    bidToken: EthAddress,
+                    lastBidAmount: OneToken.mul(10),
                     lastBidder: AddressZero,
                 };
 
@@ -2124,11 +2452,13 @@ describe("NFT Marketplace V2 tests", function () {
                         tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                         auctionData.startTime,
                         auctionData.endTime,
-                        auctionData.minPrice,
+                        auctionData.lastBidAmount,
                         auctionData.bidToken
                     );
 
-                await nftMarketplaceInst.deleteAuction(auctionId, true, false, true, false);
+                await nftMarketplaceInst
+                    .connect(auctionManager)
+                    .deleteAuction(auctionId, true, false, true, false);
 
                 expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                     user1.address
@@ -2142,9 +2472,14 @@ describe("NFT Marketplace V2 tests", function () {
             });
 
             it("Auction with bids", async () => {
-                const { nftMarketplaceInst, erc721Inst, timestampNow, user1, user2 } = <
-                    PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                const {
+                    nftMarketplaceInst,
+                    erc721Inst,
+                    timestampNow,
+                    user1,
+                    user2,
+                    auctionManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 // set parameters for auction
                 const auctionData: AuctionData = {
@@ -2157,9 +2492,8 @@ describe("NFT Marketplace V2 tests", function () {
                     seller: user1.address,
                     startTime: timestampNow + OneHour,
                     endTime: timestampNow + OneHour + OneDay,
-                    minPrice: OneToken.mul(10),
-                    bidToken: AddressZero,
-                    lastBidAmount: Zero,
+                    bidToken: EthAddress,
+                    lastBidAmount: OneToken.mul(10),
                     lastBidder: AddressZero,
                 };
 
@@ -2175,7 +2509,7 @@ describe("NFT Marketplace V2 tests", function () {
                         tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                         auctionData.startTime,
                         auctionData.endTime,
-                        auctionData.minPrice,
+                        auctionData.lastBidAmount,
                         auctionData.bidToken
                     );
 
@@ -2183,15 +2517,17 @@ describe("NFT Marketplace V2 tests", function () {
 
                 await nftMarketplaceInst
                     .connect(user2)
-                    .bid(auctionId, auctionData.minPrice, { value: auctionData.minPrice });
+                    .bidNative(auctionId, { value: auctionData.lastBidAmount });
 
                 const user2EthBalanceBefore = await ethers.provider.getBalance(user2.address);
 
-                await nftMarketplaceInst.deleteAuction(auctionId, true, false, true, false);
+                await nftMarketplaceInst
+                    .connect(auctionManager)
+                    .deleteAuction(auctionId, true, false, true, false);
 
                 const user2EthBalanceAfter = await ethers.provider.getBalance(user2.address);
                 expect(user2EthBalanceAfter.sub(user2EthBalanceBefore)).to.be.equals(
-                    auctionData.minPrice
+                    auctionData.lastBidAmount
                 );
 
                 expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
@@ -2216,7 +2552,10 @@ describe("NFT Marketplace V2 tests", function () {
                                 user1,
                                 user2,
                                 tokenInst,
-                            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                                auctionManager,
+                            } = <PrepareEnvironmentResult>(
+                                await loadFixture(prepareEnvironmentAndRoles)
+                            );
 
                             // set parameters for auction
                             const auctionData: AuctionData = {
@@ -2229,9 +2568,8 @@ describe("NFT Marketplace V2 tests", function () {
                                 seller: user1.address,
                                 startTime: timestampNow + OneHour,
                                 endTime: timestampNow + OneHour + OneDay,
-                                minPrice: OneToken.mul(10),
                                 bidToken: tokenInst.address,
-                                lastBidAmount: Zero,
+                                lastBidAmount: OneToken.mul(10),
                                 lastBidder: AddressZero,
                             };
 
@@ -2242,7 +2580,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
                             // mint ERC20 to user2
-                            await tokenInst.connect(user2).mint(auctionData.minPrice);
+                            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                             await tokenInst
                                 .connect(user2)
                                 .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2255,7 +2593,7 @@ describe("NFT Marketplace V2 tests", function () {
                                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                     auctionData.startTime,
                                     auctionData.endTime,
-                                    auctionData.minPrice,
+                                    auctionData.lastBidAmount,
                                     auctionData.bidToken
                                 );
 
@@ -2264,7 +2602,7 @@ describe("NFT Marketplace V2 tests", function () {
                             // bid
                             await nftMarketplaceInst
                                 .connect(user2)
-                                .bid(auctionId, auctionData.minPrice);
+                                .bid(auctionId, auctionData.lastBidAmount);
 
                             await erc721Inst.revertTransfers();
 
@@ -2277,13 +2615,9 @@ describe("NFT Marketplace V2 tests", function () {
                                 user2.address
                             );
 
-                            await nftMarketplaceInst.deleteAuction(
-                                auctionId,
-                                false,
-                                false,
-                                true,
-                                false
-                            );
+                            await nftMarketplaceInst
+                                .connect(auctionManager)
+                                .deleteAuction(auctionId, false, false, true, false);
 
                             expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                                 nftMarketplaceInst.address
@@ -2292,7 +2626,7 @@ describe("NFT Marketplace V2 tests", function () {
                             const user2TokenBalanceAfter = await tokenInst.balanceOf(user2.address);
                             expect(
                                 user2TokenBalanceAfter.sub(user2TokenBalanceBefore)
-                            ).to.be.equals(auctionData.minPrice);
+                            ).to.be.equals(auctionData.lastBidAmount);
                         });
 
                         it("Transfer gas ddos", async () => {
@@ -2303,7 +2637,10 @@ describe("NFT Marketplace V2 tests", function () {
                                 user1,
                                 user2,
                                 tokenInst,
-                            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                                auctionManager,
+                            } = <PrepareEnvironmentResult>(
+                                await loadFixture(prepareEnvironmentAndRoles)
+                            );
 
                             // set parameters for auction
                             const auctionData: AuctionData = {
@@ -2316,9 +2653,8 @@ describe("NFT Marketplace V2 tests", function () {
                                 seller: user1.address,
                                 startTime: timestampNow + OneHour,
                                 endTime: timestampNow + OneHour + OneDay,
-                                minPrice: OneToken.mul(10),
                                 bidToken: tokenInst.address,
-                                lastBidAmount: Zero,
+                                lastBidAmount: OneToken.mul(10),
                                 lastBidder: AddressZero,
                             };
 
@@ -2329,7 +2665,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
                             // mint ERC20 to user2
-                            await tokenInst.connect(user2).mint(auctionData.minPrice);
+                            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                             await tokenInst
                                 .connect(user2)
                                 .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2342,7 +2678,7 @@ describe("NFT Marketplace V2 tests", function () {
                                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                     auctionData.startTime,
                                     auctionData.endTime,
-                                    auctionData.minPrice,
+                                    auctionData.lastBidAmount,
                                     auctionData.bidToken
                                 );
 
@@ -2351,7 +2687,7 @@ describe("NFT Marketplace V2 tests", function () {
                             // bid
                             await nftMarketplaceInst
                                 .connect(user2)
-                                .bid(auctionId, auctionData.minPrice);
+                                .bid(auctionId, auctionData.lastBidAmount);
 
                             await erc721Inst.unlimitedGasSpend();
 
@@ -2367,25 +2703,16 @@ describe("NFT Marketplace V2 tests", function () {
                             );
 
                             await expect(
-                                nftMarketplaceInst.deleteAuction(
-                                    auctionId,
-                                    true,
-                                    false,
-                                    true,
-                                    false,
-                                    {
+                                nftMarketplaceInst
+                                    .connect(auctionManager)
+                                    .deleteAuction(auctionId, true, false, true, false, {
                                         gasLimit: gasLimit,
-                                    }
-                                )
+                                    })
                             ).to.be.reverted;
 
-                            await nftMarketplaceInst.deleteAuction(
-                                auctionId,
-                                false,
-                                true,
-                                true,
-                                false
-                            );
+                            await nftMarketplaceInst
+                                .connect(auctionManager)
+                                .deleteAuction(auctionId, false, true, true, false);
 
                             expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                                 nftMarketplaceInst.address
@@ -2394,7 +2721,7 @@ describe("NFT Marketplace V2 tests", function () {
                             const user2TokenBalanceAfter = await tokenInst.balanceOf(user2.address);
                             expect(
                                 user2TokenBalanceAfter.sub(user2TokenBalanceBefore)
-                            ).to.be.equals(auctionData.minPrice);
+                            ).to.be.equals(auctionData.lastBidAmount);
                         });
                     });
 
@@ -2407,7 +2734,10 @@ describe("NFT Marketplace V2 tests", function () {
                                 user1,
                                 user2,
                                 tokenInst,
-                            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                                auctionManager,
+                            } = <PrepareEnvironmentResult>(
+                                await loadFixture(prepareEnvironmentAndRoles)
+                            );
 
                             // set parameters for auction
                             const auctionData: AuctionData = {
@@ -2420,9 +2750,8 @@ describe("NFT Marketplace V2 tests", function () {
                                 seller: user1.address,
                                 startTime: timestampNow + OneHour,
                                 endTime: timestampNow + OneHour + OneDay,
-                                minPrice: OneToken.mul(10),
                                 bidToken: tokenInst.address,
-                                lastBidAmount: Zero,
+                                lastBidAmount: OneToken.mul(10),
                                 lastBidder: AddressZero,
                             };
 
@@ -2435,7 +2764,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
                             // mint ERC20 to user2
-                            await tokenInst.connect(user2).mint(auctionData.minPrice);
+                            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                             await tokenInst
                                 .connect(user2)
                                 .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2448,7 +2777,7 @@ describe("NFT Marketplace V2 tests", function () {
                                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                     auctionData.startTime,
                                     auctionData.endTime,
-                                    auctionData.minPrice,
+                                    auctionData.lastBidAmount,
                                     auctionData.bidToken
                                 );
 
@@ -2457,7 +2786,7 @@ describe("NFT Marketplace V2 tests", function () {
                             // bid
                             await nftMarketplaceInst
                                 .connect(user2)
-                                .bid(auctionId, auctionData.minPrice);
+                                .bid(auctionId, auctionData.lastBidAmount);
 
                             await erc1155Inst.revertTransfers();
 
@@ -2470,13 +2799,9 @@ describe("NFT Marketplace V2 tests", function () {
                                 user2.address
                             );
 
-                            await nftMarketplaceInst.deleteAuction(
-                                auctionId,
-                                false,
-                                false,
-                                true,
-                                false
-                            );
+                            await nftMarketplaceInst
+                                .connect(auctionManager)
+                                .deleteAuction(auctionId, false, false, true, false);
 
                             expect(
                                 await erc1155Inst.balanceOf(
@@ -2488,7 +2813,7 @@ describe("NFT Marketplace V2 tests", function () {
                             const user2TokenBalanceAfter = await tokenInst.balanceOf(user2.address);
                             expect(
                                 user2TokenBalanceAfter.sub(user2TokenBalanceBefore)
-                            ).to.be.equals(auctionData.minPrice);
+                            ).to.be.equals(auctionData.lastBidAmount);
                         });
 
                         it("Transfer gas ddos", async () => {
@@ -2499,7 +2824,10 @@ describe("NFT Marketplace V2 tests", function () {
                                 user1,
                                 user2,
                                 tokenInst,
-                            } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                                auctionManager,
+                            } = <PrepareEnvironmentResult>(
+                                await loadFixture(prepareEnvironmentAndRoles)
+                            );
 
                             // set parameters for auction
                             const auctionData: AuctionData = {
@@ -2512,9 +2840,8 @@ describe("NFT Marketplace V2 tests", function () {
                                 seller: user1.address,
                                 startTime: timestampNow + OneHour,
                                 endTime: timestampNow + OneHour + OneDay,
-                                minPrice: OneToken.mul(10),
                                 bidToken: tokenInst.address,
-                                lastBidAmount: Zero,
+                                lastBidAmount: OneToken.mul(10),
                                 lastBidder: AddressZero,
                             };
 
@@ -2527,7 +2854,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 .setApprovalForAll(nftMarketplaceInst.address, true);
 
                             // mint ERC20 to user2
-                            await tokenInst.connect(user2).mint(auctionData.minPrice);
+                            await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                             await tokenInst
                                 .connect(user2)
                                 .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2540,7 +2867,7 @@ describe("NFT Marketplace V2 tests", function () {
                                     tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                     auctionData.startTime,
                                     auctionData.endTime,
-                                    auctionData.minPrice,
+                                    auctionData.lastBidAmount,
                                     auctionData.bidToken
                                 );
 
@@ -2549,7 +2876,7 @@ describe("NFT Marketplace V2 tests", function () {
                             // bid
                             await nftMarketplaceInst
                                 .connect(user2)
-                                .bid(auctionId, auctionData.minPrice);
+                                .bid(auctionId, auctionData.lastBidAmount);
 
                             await erc1155Inst.unlimitedGasSpend();
 
@@ -2565,25 +2892,16 @@ describe("NFT Marketplace V2 tests", function () {
                             );
 
                             await expect(
-                                nftMarketplaceInst.deleteAuction(
-                                    auctionId,
-                                    true,
-                                    false,
-                                    true,
-                                    false,
-                                    {
+                                nftMarketplaceInst
+                                    .connect(auctionManager)
+                                    .deleteAuction(auctionId, true, false, true, false, {
                                         gasLimit: gasLimit,
-                                    }
-                                )
+                                    })
                             ).to.be.reverted;
 
-                            await nftMarketplaceInst.deleteAuction(
-                                auctionId,
-                                false,
-                                true,
-                                true,
-                                false
-                            );
+                            await nftMarketplaceInst
+                                .connect(auctionManager)
+                                .deleteAuction(auctionId, false, true, true, false);
 
                             expect(
                                 await erc1155Inst.balanceOf(
@@ -2595,7 +2913,7 @@ describe("NFT Marketplace V2 tests", function () {
                             const user2TokenBalanceAfter = await tokenInst.balanceOf(user2.address);
                             expect(
                                 user2TokenBalanceAfter.sub(user2TokenBalanceBefore)
-                            ).to.be.equals(auctionData.minPrice);
+                            ).to.be.equals(auctionData.lastBidAmount);
                         });
                     });
                 });
@@ -2609,7 +2927,8 @@ describe("NFT Marketplace V2 tests", function () {
                             user1,
                             user2,
                             tokenInst,
-                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                            auctionManager,
+                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                         // set parameters for auction
                         const auctionData: AuctionData = {
@@ -2622,9 +2941,8 @@ describe("NFT Marketplace V2 tests", function () {
                             seller: user1.address,
                             startTime: timestampNow + OneHour,
                             endTime: timestampNow + OneHour + OneDay,
-                            minPrice: OneToken.mul(10),
                             bidToken: tokenInst.address,
-                            lastBidAmount: Zero,
+                            lastBidAmount: OneToken.mul(10),
                             lastBidder: AddressZero,
                         };
 
@@ -2635,7 +2953,7 @@ describe("NFT Marketplace V2 tests", function () {
                             .setApprovalForAll(nftMarketplaceInst.address, true);
 
                         // mint ERC20 to user2
-                        await tokenInst.connect(user2).mint(auctionData.minPrice);
+                        await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                         await tokenInst
                             .connect(user2)
                             .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2648,7 +2966,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                 auctionData.startTime,
                                 auctionData.endTime,
-                                auctionData.minPrice,
+                                auctionData.lastBidAmount,
                                 auctionData.bidToken
                             );
 
@@ -2657,7 +2975,7 @@ describe("NFT Marketplace V2 tests", function () {
                         // bid
                         await nftMarketplaceInst
                             .connect(user2)
-                            .bid(auctionId, auctionData.minPrice);
+                            .bid(auctionId, auctionData.lastBidAmount);
 
                         await tokenInst.returnTransferFalse();
 
@@ -2666,19 +2984,15 @@ describe("NFT Marketplace V2 tests", function () {
                             "NftMarketplaceV2: ERC20 transfer result false"
                         );
 
-                        await nftMarketplaceInst.deleteAuction(
-                            auctionId,
-                            true,
-                            false,
-                            false,
-                            false
-                        );
+                        await nftMarketplaceInst
+                            .connect(auctionManager)
+                            .deleteAuction(auctionId, true, false, false, false);
 
                         expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                             user1.address
                         );
                         expect(await tokenInst.balanceOf(nftMarketplaceInst.address)).to.be.equals(
-                            auctionData.minPrice
+                            auctionData.lastBidAmount
                         );
                     });
 
@@ -2690,7 +3004,8 @@ describe("NFT Marketplace V2 tests", function () {
                             user1,
                             user2,
                             tokenInst,
-                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                            auctionManager,
+                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                         // set parameters for auction
                         const auctionData: AuctionData = {
@@ -2703,9 +3018,8 @@ describe("NFT Marketplace V2 tests", function () {
                             seller: user1.address,
                             startTime: timestampNow + OneHour,
                             endTime: timestampNow + OneHour + OneDay,
-                            minPrice: OneToken.mul(10),
                             bidToken: tokenInst.address,
-                            lastBidAmount: Zero,
+                            lastBidAmount: OneToken.mul(10),
                             lastBidder: AddressZero,
                         };
 
@@ -2716,7 +3030,7 @@ describe("NFT Marketplace V2 tests", function () {
                             .setApprovalForAll(nftMarketplaceInst.address, true);
 
                         // mint ERC20 to user2
-                        await tokenInst.connect(user2).mint(auctionData.minPrice);
+                        await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                         await tokenInst
                             .connect(user2)
                             .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2729,7 +3043,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                 auctionData.startTime,
                                 auctionData.endTime,
-                                auctionData.minPrice,
+                                auctionData.lastBidAmount,
                                 auctionData.bidToken
                             );
 
@@ -2738,7 +3052,7 @@ describe("NFT Marketplace V2 tests", function () {
                         // bid
                         await nftMarketplaceInst
                             .connect(user2)
-                            .bid(auctionId, auctionData.minPrice);
+                            .bid(auctionId, auctionData.lastBidAmount);
 
                         await tokenInst.revertTransfers();
 
@@ -2747,19 +3061,15 @@ describe("NFT Marketplace V2 tests", function () {
                             "ERC20 transfer revert"
                         );
 
-                        await nftMarketplaceInst.deleteAuction(
-                            auctionId,
-                            true,
-                            false,
-                            false,
-                            false
-                        );
+                        await nftMarketplaceInst
+                            .connect(auctionManager)
+                            .deleteAuction(auctionId, true, false, false, false);
 
                         expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                             user1.address
                         );
                         expect(await tokenInst.balanceOf(nftMarketplaceInst.address)).to.be.equals(
-                            auctionData.minPrice
+                            auctionData.lastBidAmount
                         );
                     });
 
@@ -2771,7 +3081,8 @@ describe("NFT Marketplace V2 tests", function () {
                             user1,
                             user2,
                             tokenInst,
-                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                            auctionManager,
+                        } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                         // set parameters for auction
                         const auctionData: AuctionData = {
@@ -2784,9 +3095,8 @@ describe("NFT Marketplace V2 tests", function () {
                             seller: user1.address,
                             startTime: timestampNow + OneHour,
                             endTime: timestampNow + OneHour + OneDay,
-                            minPrice: OneToken.mul(10),
                             bidToken: tokenInst.address,
-                            lastBidAmount: Zero,
+                            lastBidAmount: OneToken.mul(10),
                             lastBidder: AddressZero,
                         };
 
@@ -2797,7 +3107,7 @@ describe("NFT Marketplace V2 tests", function () {
                             .setApprovalForAll(nftMarketplaceInst.address, true);
 
                         // mint ERC20 to user2
-                        await tokenInst.connect(user2).mint(auctionData.minPrice);
+                        await tokenInst.connect(user2).mint(auctionData.lastBidAmount);
                         await tokenInst
                             .connect(user2)
                             .approve(nftMarketplaceInst.address, MaxUint256);
@@ -2810,7 +3120,7 @@ describe("NFT Marketplace V2 tests", function () {
                                 tokenInfoToTokenInfoRaw(auctionData.tokenInfo),
                                 auctionData.startTime,
                                 auctionData.endTime,
-                                auctionData.minPrice,
+                                auctionData.lastBidAmount,
                                 auctionData.bidToken
                             );
 
@@ -2819,7 +3129,7 @@ describe("NFT Marketplace V2 tests", function () {
                         // bid
                         await nftMarketplaceInst
                             .connect(user2)
-                            .bid(auctionId, auctionData.minPrice);
+                            .bid(auctionId, auctionData.lastBidAmount);
 
                         await tokenInst.unlimitedGasSpend();
 
@@ -2830,20 +3140,17 @@ describe("NFT Marketplace V2 tests", function () {
                             })
                         ).to.be.reverted;
 
-                        await nftMarketplaceInst.deleteAuction(
-                            auctionId,
-                            true,
-                            false,
-                            false,
-                            true,
-                            { gasLimit: gasLimit }
-                        );
+                        await nftMarketplaceInst
+                            .connect(auctionManager)
+                            .deleteAuction(auctionId, true, false, false, true, {
+                                gasLimit: gasLimit,
+                            });
 
                         expect(await erc721Inst.ownerOf(auctionData.tokenInfo.id)).to.be.equals(
                             user1.address
                         );
                         expect(await tokenInst.balanceOf(nftMarketplaceInst.address)).to.be.equals(
-                            auctionData.minPrice
+                            auctionData.lastBidAmount
                         );
                     });
                 });
@@ -2854,9 +3161,17 @@ describe("NFT Marketplace V2 tests", function () {
     describe("Royalties", () => {
         describe("Admin functions", () => {
             it("{setRoyalty} function", async () => {
-                const { nftMarketplaceInst, deployer, user1, user2, erc721Inst, erc1155Inst } = <
-                    PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                const {
+                    nftMarketplaceInst,
+                    deployer,
+                    user1,
+                    user2,
+                    erc721Inst,
+                    erc1155Inst,
+                    royaltyManagerRole,
+                    royaltyManager,
+                    auctionManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 await expect(
                     nftMarketplaceInst.connect(user1).setRoyalty(AddressZero, AddressZero, Zero)
@@ -2864,37 +3179,58 @@ describe("NFT Marketplace V2 tests", function () {
                     "AccessControl: account " +
                         user1.address.toLowerCase() +
                         " is missing role " +
-                        Bytes32Zero
+                        royaltyManagerRole
                 );
                 await expect(
                     nftMarketplaceInst.connect(deployer).setRoyalty(AddressZero, AddressZero, Zero)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        deployer.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+                await expect(
+                    nftMarketplaceInst
+                        .connect(auctionManager)
+                        .setRoyalty(AddressZero, AddressZero, Zero)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        auctionManager.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+
+                await expect(
+                    nftMarketplaceInst
+                        .connect(royaltyManager)
+                        .setRoyalty(AddressZero, AddressZero, Zero)
                 ).to.be.revertedWith("RoyaltiesInfo: Not a contract");
                 await expect(
                     nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(royaltyManager)
                         .setRoyalty(nftMarketplaceInst.address, AddressZero, Zero)
                 ).to.be.revertedWith("RoyaltiesInfo: Wrong interface");
                 await expect(
                     nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(royaltyManager)
                         .setRoyalty(erc721Inst.address, AddressZero, Zero)
                 ).to.be.revertedWith("RoyaltiesInfo: Percentage");
                 await expect(
                     nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(royaltyManager)
                         .setRoyalty(erc721Inst.address, AddressZero, 10_01)
                 ).to.be.revertedWith("RoyaltiesInfo: Percentage");
                 await expect(
                     nftMarketplaceInst
-                        .connect(deployer)
+                        .connect(royaltyManager)
                         .setRoyalty(erc721Inst.address, AddressZero, 10_00)
                 ).to.be.revertedWith("RoyaltiesInfo: royaltyReceiver");
 
                 await nftMarketplaceInst
-                    .connect(deployer)
+                    .connect(royaltyManager)
                     .setRoyalty(erc721Inst.address, user1.address, One);
                 await nftMarketplaceInst
-                    .connect(deployer)
+                    .connect(royaltyManager)
                     .setRoyalty(erc1155Inst.address, user2.address, Two);
 
                 const erc721Info = await nftMarketplaceInst.royaltiesInfo(erc721Inst.address);
@@ -2909,9 +3245,15 @@ describe("NFT Marketplace V2 tests", function () {
             });
 
             it("{setDefaultFeeForOwner} function", async () => {
-                const { nftMarketplaceInst, deployer, user1, defaultFeeForOwner } = <
-                    PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                const {
+                    nftMarketplaceInst,
+                    deployer,
+                    user1,
+                    defaultFeeForOwner,
+                    royaltyManagerRole,
+                    royaltyManager,
+                    auctionManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 await expect(
                     nftMarketplaceInst.connect(user1).setDefaultFeeForOwner(Zero)
@@ -2919,25 +3261,50 @@ describe("NFT Marketplace V2 tests", function () {
                     "AccessControl: account " +
                         user1.address.toLowerCase() +
                         " is missing role " +
-                        Bytes32Zero
+                        royaltyManagerRole
                 );
                 await expect(
-                    nftMarketplaceInst.connect(deployer).setDefaultFeeForOwner(10_01)
+                    nftMarketplaceInst.connect(deployer).setDefaultFeeForOwner(Zero)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        deployer.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+                await expect(
+                    nftMarketplaceInst.connect(auctionManager).setDefaultFeeForOwner(Zero)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        auctionManager.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+
+                await expect(
+                    nftMarketplaceInst.connect(royaltyManager).setDefaultFeeForOwner(10_01)
                 ).to.be.revertedWith("NftMarketplace: Too big percent");
                 await expect(
-                    nftMarketplaceInst.connect(deployer).setDefaultFeeForOwner(defaultFeeForOwner)
+                    nftMarketplaceInst
+                        .connect(royaltyManager)
+                        .setDefaultFeeForOwner(defaultFeeForOwner)
                 ).to.be.revertedWith("NftMarketplace: No change");
 
                 const newValue = 10;
-                await nftMarketplaceInst.connect(deployer).setDefaultFeeForOwner(newValue);
+                await nftMarketplaceInst.connect(royaltyManager).setDefaultFeeForOwner(newValue);
 
                 expect(await nftMarketplaceInst.defaultFeeForOwner()).to.be.equals(newValue);
             });
 
             it("{disableAdminRoyalty} function", async () => {
-                const { nftMarketplaceInst, deployer, user1, erc721Inst } = <
-                    PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                const {
+                    nftMarketplaceInst,
+                    deployer,
+                    user1,
+                    erc721Inst,
+                    royaltyManagerRole,
+                    royaltyManager,
+                    auctionManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 await expect(
                     nftMarketplaceInst.connect(user1).disableAdminRoyalty(erc721Inst.address)
@@ -2945,16 +3312,39 @@ describe("NFT Marketplace V2 tests", function () {
                     "AccessControl: account " +
                         user1.address.toLowerCase() +
                         " is missing role " +
-                        Bytes32Zero
+                        royaltyManagerRole
                 );
                 await expect(
                     nftMarketplaceInst.connect(deployer).disableAdminRoyalty(erc721Inst.address)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        deployer.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+                await expect(
+                    nftMarketplaceInst
+                        .connect(auctionManager)
+                        .disableAdminRoyalty(erc721Inst.address)
+                ).to.be.revertedWith(
+                    "AccessControl: account " +
+                        auctionManager.address.toLowerCase() +
+                        " is missing role " +
+                        royaltyManagerRole
+                );
+
+                await expect(
+                    nftMarketplaceInst
+                        .connect(royaltyManager)
+                        .disableAdminRoyalty(erc721Inst.address)
                 ).to.be.revertedWith("RoyaltiesInfo: Disabled");
 
                 await nftMarketplaceInst
-                    .connect(deployer)
+                    .connect(royaltyManager)
                     .setRoyalty(erc721Inst.address, user1.address, 10);
-                await nftMarketplaceInst.connect(deployer).disableAdminRoyalty(erc721Inst.address);
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .disableAdminRoyalty(erc721Inst.address);
 
                 const info = await nftMarketplaceInst.royaltiesInfo(erc721Inst.address);
                 expect(info.isEnabled).to.be.false;
@@ -2966,7 +3356,7 @@ describe("NFT Marketplace V2 tests", function () {
         describe("{getRoyaltyInfo} function", async () => {
             it("Without royalty info", async () => {
                 const { nftMarketplaceInst, erc721Inst } = <PrepareEnvironmentResult>(
-                    await loadFixture(prepareEnvironment)
+                    await loadFixture(prepareEnvironmentAndRoles)
                 );
 
                 const result = await nftMarketplaceInst.getRoyaltyInfo(
@@ -2979,16 +3369,14 @@ describe("NFT Marketplace V2 tests", function () {
             });
 
             it("With admin info", async () => {
-                const { nftMarketplaceInst, erc721Inst, user1 } = <PrepareEnvironmentResult>(
-                    await loadFixture(prepareEnvironment)
-                );
+                const { nftMarketplaceInst, erc721Inst, user1, royaltyManager } = <
+                    PrepareEnvironmentResult
+                >await loadFixture(prepareEnvironmentAndRoles);
 
                 const royaltyPercentage = 100;
-                await nftMarketplaceInst.setRoyalty(
-                    erc721Inst.address,
-                    user1.address,
-                    royaltyPercentage
-                );
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .setRoyalty(erc721Inst.address, user1.address, royaltyPercentage);
 
                 const price = OneEth;
                 const result = await nftMarketplaceInst.getRoyaltyInfo(
@@ -3003,7 +3391,7 @@ describe("NFT Marketplace V2 tests", function () {
             it("With owner info", async () => {
                 const { nftMarketplaceInst, erc721OwnableInst, deployer, defaultFeeForOwner } = <
                     PrepareEnvironmentResult
-                >await loadFixture(prepareEnvironment);
+                >await loadFixture(prepareEnvironmentAndRoles);
 
                 const price = OneEth;
                 const result = await nftMarketplaceInst.getRoyaltyInfo(
@@ -3023,7 +3411,7 @@ describe("NFT Marketplace V2 tests", function () {
                     erc721WithERC2981Inst,
                     feeReceiverERC2981,
                     defaultERC2981Fee,
-                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 const price = OneEth;
                 const result = await nftMarketplaceInst.getRoyaltyInfo(
@@ -3042,14 +3430,13 @@ describe("NFT Marketplace V2 tests", function () {
                     user2,
                     defaultERC2981Fee,
                     feeReceiverERC2981,
-                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                    royaltyManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 const newRoyalty = 8_00;
-                await nftMarketplaceInst.setRoyalty(
-                    erc721WithERC2981Inst.address,
-                    user2.address,
-                    newRoyalty
-                );
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .setRoyalty(erc721WithERC2981Inst.address, user2.address, newRoyalty);
 
                 const price = OneEth;
                 const result1 = await nftMarketplaceInst.getRoyaltyInfo(
@@ -3060,7 +3447,9 @@ describe("NFT Marketplace V2 tests", function () {
                 expect(result1.royaltyAmount).to.be.equals(price.mul(newRoyalty).div(100_00));
                 expect(result1.royaltyReceiver).to.be.equals(user2.address);
 
-                await nftMarketplaceInst.disableAdminRoyalty(erc721WithERC2981Inst.address);
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .disableAdminRoyalty(erc721WithERC2981Inst.address);
 
                 const result2 = await nftMarketplaceInst.getRoyaltyInfo(
                     erc721WithERC2981Inst.address,
@@ -3080,14 +3469,13 @@ describe("NFT Marketplace V2 tests", function () {
                     deployer,
                     user2,
                     defaultFeeForOwner,
-                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironment);
+                    royaltyManager,
+                } = <PrepareEnvironmentResult>await loadFixture(prepareEnvironmentAndRoles);
 
                 const newRoyalty = 8_00;
-                await nftMarketplaceInst.setRoyalty(
-                    erc721OwnableInst.address,
-                    user2.address,
-                    newRoyalty
-                );
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .setRoyalty(erc721OwnableInst.address, user2.address, newRoyalty);
 
                 const price = OneEth;
                 const result1 = await nftMarketplaceInst.getRoyaltyInfo(
@@ -3098,7 +3486,9 @@ describe("NFT Marketplace V2 tests", function () {
                 expect(result1.royaltyAmount).to.be.equals(price.mul(newRoyalty).div(100_00));
                 expect(result1.royaltyReceiver).to.be.equals(user2.address);
 
-                await nftMarketplaceInst.disableAdminRoyalty(erc721OwnableInst.address);
+                await nftMarketplaceInst
+                    .connect(royaltyManager)
+                    .disableAdminRoyalty(erc721OwnableInst.address);
 
                 const result2 = await nftMarketplaceInst.getRoyaltyInfo(
                     erc721OwnableInst.address,

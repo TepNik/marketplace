@@ -42,13 +42,15 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         address seller;
         uint32 startTime;
         uint32 endTime;
-        uint256 minPrice;
         address bidToken; // for native token use address(0)
         uint256 lastBidAmount;
         address lastBidder;
     }
 
     // public
+
+    /// @notice Role that manages auctions
+    bytes32 public constant AUCTION_MANAGER = keccak256("AUCTION_MANAGER");
 
     /// @notice True if the creation of new auctions is paused by an admin.
     bool public isPausedCreation;
@@ -69,6 +71,8 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
     uint256 private constant _MAX_GAS_FOR_NATIVE_TRANSFER = 200_000;
     uint256 private constant _MAX_GAS_FOR_TOKEN_TRANSFER = 1_000_000;
+
+    address private constant _ETH_ADDRESS = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
     // events
 
@@ -108,7 +112,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     /// @param startTime Time when the auction will start
     /// @param endTime Time when the auction will end
     /// @param minPrice Minimum price in token `bidToken`
-    /// @param bidToken Address of a token that will be accepted for a bid (0x0 address is used for the native token)
+    /// @param bidToken Address of a token that will be accepted for a bid (0xeee address is used for the native token)
     /// @param auctionId Unique identifier for this new auction
     event AuctoinCreated(
         address indexed user,
@@ -122,7 +126,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     /// @notice The event is emitted when `user` makes a bid on the auction (`auctionId`).
     /// @param auctionId Auction identifier for which `user` makes a bid
     /// @param user User that makes a bid
-    /// @param bidToken Address of the token that bids `user` (0x0 address is used for the native token)
+    /// @param bidToken Address of the token that bids `user` (0xeee address is used for the native token)
     /// @param bidAmount Amount of the bid
     event BidMade(
         bytes32 auctionId,
@@ -133,7 +137,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     /// @notice The event is emitted when to the auction (`auctionId`) comes a new bid with a bigger amount of the bid.
     /// @param auctionId Auction identifier in which `user` made the bid
     /// @param user User that gets his bid back
-    /// @param bidToken Address of the token that will be refunded to the `user` (0x0 address is used for the native token)
+    /// @param bidToken Address of the token that will be refunded to the `user` (0xeee address is used for the native token)
     /// @param bidAmount Amount of refund
     event BidRefund(
         bytes32 auctionId,
@@ -153,7 +157,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     /// @param seller User that sells NFT
     /// @param buyer User that buys NFT
     /// @param tokenInfoSell Token info for NFT
-    /// @param tokenInfoBid Token info for bid token (0x0 address is used for the native token)
+    /// @param tokenInfoBid Token info for bid token (0xeee address is used for the native token)
     event AuctionEnded(
         bytes32 auctionId,
         address indexed seller,
@@ -198,6 +202,9 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         require(_feeReceiver != address(0), "NftMarketplaceV2: Zero address");
         feeReceiver = _feeReceiver;
 
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(AUCTION_MANAGER, msg.sender);
+
         emit FeePercentageChange(msg.sender, 0, feePercentage);
         emit FeeReceiverChange(msg.sender, address(0), _feeReceiver);
     }
@@ -209,7 +216,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     /// @param startTime Time when this auction will start
     /// @param endTime Time when this auction will end
     /// @param minPrice Minimum price for this NFT
-    /// @param bidToken Address of the token that will be accepted for bids (0x0 address is used for the native token)
+    /// @param bidToken Address of the token that will be accepted for bids (0xeee address is used for the native token)
     function createAuction(
         TokenInfo calldata tokenInfo,
         uint32 startTime,
@@ -222,11 +229,10 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         require(tokenInfo.tokenType != TokenType.ERC20, "NftMarketplaceV2: Only NFT");
         _verifyToken(tokenInfo);
 
-        if (bidToken != address(0)) {
+        if (bidToken != _ETH_ADDRESS) {
             require(bidToken.isContract(), "NftMarketplaceV2: bidToken is not a contract");
             require(IERC20Metadata(bidToken).decimals() > 0, "NftMarketplaceV2: Not ERC20");
         }
-        require(msg.sender == tx.origin, "NftMarketplaceV2: Not allowed contracts");
         require(
             startTime < endTime && endTime > block.timestamp,
             "NftMarketplaceV2: Wrong start/end time"
@@ -237,9 +243,8 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
             seller: msg.sender,
             startTime: startTime,
             endTime: endTime,
-            minPrice: minPrice,
             bidToken: bidToken,
-            lastBidAmount: 0,
+            lastBidAmount: minPrice,
             lastBidder: address(0)
         });
         auctionId = _getAuctionId(_auctionData);
@@ -250,7 +255,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         auctionData[auctionId] = _auctionData;
         _activeAuctions.add(auctionId);
 
-        _tokenTransfer(tokenInfo, msg.sender, address(this), true, false);
+        _transferNFT(tokenInfo, msg.sender, address(this), true, false);
 
         emit AuctoinCreated(
             msg.sender,
@@ -264,13 +269,9 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
     }
 
     /// @notice Make a bid to the auction with id `auctionId`.
-    /// If auction has (bidToken == 0x0) then `amount` should be added to the value of tx
-    /// else the value of tx should be zero.
     /// @param auctionId Auction identifier to which the bid will be made
     /// @param amount Amount of the bid
-    function bid(bytes32 auctionId, uint256 amount) external payable nonReentrant {
-        require(msg.sender == tx.origin, "NftMarketplaceV2: Not allowed contracts");
-
+    function bid(bytes32 auctionId, uint256 amount) external nonReentrant {
         AuctionData storage _auctionData = auctionData[auctionId];
         require(_auctionData.seller != address(0), "NftMarketplaceV2: No such open auction");
 
@@ -282,44 +283,70 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
         address bidToken = _auctionData.bidToken;
         uint256 lastBidAmount = _auctionData.lastBidAmount;
+        address lastBidder = _auctionData.lastBidder;
 
         require(
-            amount > 0 &&
-                (lastBidAmount > 0 ? amount > lastBidAmount : true) &&
-                amount >= _auctionData.minPrice,
+            amount >
+                (
+                    lastBidder != address(0) || lastBidAmount == 0
+                        ? lastBidAmount
+                        : lastBidAmount - 1
+                ),
             "NftMarketplaceV2: Too low amount"
         );
 
-        if (lastBidAmount > 0) {
-            address lastBidder = _auctionData.lastBidder;
-            _tokenTransfer(
-                TokenInfo({
-                    tokenType: TokenType.ERC20,
-                    tokenAddress: bidToken,
-                    id: 0,
-                    amount: lastBidAmount
-                }),
-                address(this),
-                lastBidder,
-                true,
-                false
-            );
+        if (lastBidder != address(0)) {
+            _transferERC20(bidToken, address(this), lastBidder, lastBidAmount, true, false);
 
             emit BidRefund(auctionId, lastBidder, bidToken, lastBidAmount);
         }
 
-        _tokenTransfer(
-            TokenInfo({tokenType: TokenType.ERC20, tokenAddress: bidToken, id: 0, amount: amount}),
-            msg.sender,
-            address(this),
-            true,
-            false
-        );
+        _transferERC20(bidToken, msg.sender, address(this), amount, true, false);
 
         _auctionData.lastBidder = msg.sender;
         _auctionData.lastBidAmount = amount;
 
         emit BidMade(auctionId, msg.sender, bidToken, amount);
+    }
+
+    /// @notice Make a bid with native token to the auction with id `auctionId`.
+    /// @param auctionId Auction identifier to which the bid will be made
+    function bidNative(bytes32 auctionId) external payable nonReentrant {
+        AuctionData storage _auctionData = auctionData[auctionId];
+        require(_auctionData.seller != address(0), "NftMarketplaceV2: No such open auction");
+
+        require(
+            block.timestamp >= _auctionData.startTime,
+            "NftMarketplaceV2: Auction is not started"
+        );
+        require(block.timestamp < _auctionData.endTime, "NftMarketplaceV2: Auction has ended");
+
+        address bidToken = _auctionData.bidToken;
+        require(bidToken == _ETH_ADDRESS, "NftMarketplaceV2: Use {bid} function");
+
+        uint256 lastBidAmount = _auctionData.lastBidAmount;
+        address lastBidder = _auctionData.lastBidder;
+
+        require(
+            msg.value >
+                (
+                    lastBidder != address(0) || lastBidAmount == 0
+                        ? lastBidAmount
+                        : lastBidAmount - 1
+                ),
+            "NftMarketplaceV2: Too low amount"
+        );
+
+        if (lastBidder != address(0)) {
+            _transferNative(address(this), lastBidder, lastBidAmount, true, false);
+
+            emit BidRefund(auctionId, lastBidder, bidToken, lastBidAmount);
+        }
+
+        _auctionData.lastBidder = msg.sender;
+        _auctionData.lastBidAmount = msg.value;
+
+        emit BidMade(auctionId, msg.sender, bidToken, msg.value);
     }
 
     /// @notice Function for ending the auction. Can be called only when endTime of an auction has passed.
@@ -337,7 +364,7 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         address lastBidder = _auctionData.lastBidder;
         if (lastBidder == address(0)) {
             TokenInfo memory tokenInfo = _auctionData.tokenInfo;
-            _tokenTransfer(tokenInfo, address(this), seller, true, false);
+            _transferNFT(tokenInfo, address(this), seller, true, false);
 
             emit AuctionCalceled(auctionId, seller, tokenInfo);
         } else {
@@ -353,20 +380,26 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
             address bidToken = _auctionData.bidToken;
 
-            _tokenTransfer(tokenInfo, address(this), lastBidder, true, false);
+            _transferNFT(tokenInfo, address(this), lastBidder, true, false);
 
-            _tokenTransferWithFee(
-                TokenInfo({
-                    tokenType: TokenType.ERC20,
-                    tokenAddress: bidToken,
-                    id: 0,
-                    amount: price
-                }),
-                address(this),
-                seller,
-                royaltyReceiver,
-                royaltyAmount
-            );
+            if (bidToken == _ETH_ADDRESS) {
+                _transferNativeWithFee(
+                    address(this),
+                    seller,
+                    price,
+                    royaltyReceiver,
+                    royaltyAmount
+                );
+            } else {
+                _transferERC20WithFee(
+                    bidToken,
+                    address(this),
+                    seller,
+                    price,
+                    royaltyReceiver,
+                    royaltyAmount
+                );
+            }
 
             emit AuctionEnded(
                 auctionId,
@@ -389,31 +422,32 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
     // external admin
 
-    /// @notice Admin function for setting a new value for fee percentages of the marketplace.
-    /// @param newValue New value of the marketplace fee percentages
-    function setFeePercentage(uint256 newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(newValue <= 10_00, "NftMarketplaceV2: Too big percentage"); // 10% max
+    /// @notice Admin function (AUCTION_MANAGER role) for setting new values for fee percentages and fee receiver of the marketplace.
+    /// @param newValueFeePercentage New value of the marketplace fee percentages
+    /// @param newValueFeeReceiver New value of the marketplace fee receiver
+    function setFeeInfo(uint256 newValueFeePercentage, address newValueFeeReceiver)
+        external
+        onlyRole(AUCTION_MANAGER)
+    {
+        require(newValueFeePercentage <= 10_00, "NftMarketplaceV2: Too big percentage"); // 10% max
+        require(newValueFeeReceiver != address(0), "NftMarketplaceV2: Zero address");
 
-        uint256 oldValue = feePercentage;
-        require(oldValue != newValue, "NftMarketplaceV2: No change");
-        feePercentage = newValue;
+        uint256 oldValueFeePercentage = feePercentage;
+        if (oldValueFeePercentage != newValueFeePercentage) {
+            feePercentage = newValueFeePercentage;
 
-        emit FeePercentageChange(msg.sender, oldValue, newValue);
+            emit FeePercentageChange(msg.sender, oldValueFeePercentage, newValueFeePercentage);
+        }
+
+        address oldValueFeeReceiver = feeReceiver;
+        if (oldValueFeeReceiver != newValueFeeReceiver) {
+            feeReceiver = newValueFeeReceiver;
+
+            emit FeeReceiverChange(msg.sender, oldValueFeeReceiver, newValueFeeReceiver);
+        }
     }
 
-    /// @notice Admin function for setting a new value for the marketplace's fee receiver.
-    /// @param newValue New value of the marketplace's fee receiver
-    function setFeeReceiver(address newValue) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(newValue != address(0), "NftMarketplaceV2: Zero address");
-
-        address oldValue = feeReceiver;
-        require(oldValue != newValue, "NftMarketplaceV2: No change");
-        feeReceiver = newValue;
-
-        emit FeeReceiverChange(msg.sender, oldValue, newValue);
-    }
-
-    /// @notice Admin function for deleting auction (`auctionId`) is case of
+    /// @notice Admin function (AUCTION_MANAGER role) for deleting auction (`auctionId`) is case of
     /// wrong parameters and if NFT or a bid token reverts token transfer (or gas ddos).
     /// @param auctionId Auction identifier that will be deleted
     /// @param requireSuccessSeller If NFT maliciously reverts transfers, the bidder's funds can be locked.
@@ -430,14 +464,14 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         bool setGasLimitForSellerTransfer,
         bool requireSuccessBuyer,
         bool setGasLimitForBuyerTransfer
-    ) external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
+    ) external nonReentrant onlyRole(AUCTION_MANAGER) {
         AuctionData storage _auctionData = auctionData[auctionId];
 
         address seller = _auctionData.seller;
         require(seller != address(0), "NftMarketplaceV2: No such open auction");
 
         TokenInfo memory tokenInfo = _auctionData.tokenInfo;
-        _tokenTransfer(
+        _transferNFT(
             tokenInfo,
             address(this),
             seller,
@@ -447,18 +481,25 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
         address lastBidder = _auctionData.lastBidder;
         if (lastBidder != address(0)) {
-            _tokenTransfer(
-                TokenInfo({
-                    tokenType: TokenType.ERC20,
-                    tokenAddress: _auctionData.bidToken,
-                    id: 0,
-                    amount: _auctionData.lastBidAmount
-                }),
-                address(this),
-                lastBidder,
-                requireSuccessBuyer,
-                setGasLimitForBuyerTransfer
-            );
+            address bidToken = _auctionData.bidToken;
+            if (bidToken == _ETH_ADDRESS) {
+                _transferNative(
+                    address(this),
+                    lastBidder,
+                    _auctionData.lastBidAmount,
+                    requireSuccessBuyer,
+                    setGasLimitForBuyerTransfer
+                );
+            } else {
+                _transferERC20(
+                    bidToken,
+                    address(this),
+                    lastBidder,
+                    _auctionData.lastBidAmount,
+                    requireSuccessBuyer,
+                    setGasLimitForBuyerTransfer
+                );
+            }
         }
 
         delete auctionData[auctionId];
@@ -468,8 +509,8 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         emit AucitonDeleted(msg.sender, auctionId);
     }
 
-    /// @notice Admin function for pausing/unpausing creation of auctions on the marketplace.
-    function togglePause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    /// @notice Admin function (AUCTION_MANAGER role) for pausing/unpausing creation of auctions on the marketplace.
+    function togglePause() external onlyRole(AUCTION_MANAGER) {
         bool oldValue = isPausedCreation;
         isPausedCreation = !oldValue;
 
@@ -515,130 +556,60 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
 
     // private
 
-    function _tokenTransfer(
+    function _transferERC20(
+        address token,
+        address from,
+        address to,
+        uint256 amount,
+        bool requireSuccess,
+        bool setGasLimit
+    ) private {
+        require(token.isContract(), "NftMarketplaceV2: Token is not a contract");
+        if (from == address(this)) {
+            uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_TOKEN_TRANSFER : gasleft();
+            (bool success, bytes memory data) = token.call{gas: gasLimit}(
+                abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
+            );
+            bool isSucceeded = _checkTransferResult(success, data);
+            if (requireSuccess) {
+                require(
+                    isSucceeded,
+                    success ? "NftMarketplaceV2: ERC20 transfer result false" : _getRevertMsg(data)
+                );
+            } else if (!isSucceeded) {
+                string memory errorMessage = success
+                    ? "NftMarketplaceV2: ERC20 transfer result false"
+                    : _getRevertMsg(data);
+                emit BadTokenTransfer(to, token, TokenType.ERC20, 0, amount, errorMessage);
+            }
+        } else {
+            uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_TOKEN_TRANSFER : gasleft();
+            (bool success, bytes memory data) = token.call{gas: gasLimit}(
+                abi.encodeWithSelector(IERC20.transferFrom.selector, from, to, amount)
+            );
+            bool isSucceeded = _checkTransferResult(success, data);
+            if (requireSuccess) {
+                require(
+                    isSucceeded,
+                    success ? "NftMarketplaceV2: ERC20 transfer result false" : _getRevertMsg(data)
+                );
+            } else if (!isSucceeded) {
+                string memory errorMessage = success
+                    ? "NftMarketplaceV2: ERC20 transferFrom result false"
+                    : _getRevertMsg(data);
+                emit BadTokenTransfer(to, token, TokenType.ERC20, 0, amount, errorMessage);
+            }
+        }
+    }
+
+    function _transferNFT(
         TokenInfo memory tokenInfo,
         address from,
         address to,
         bool requireSuccess,
         bool setGasLimit
     ) private {
-        if (tokenInfo.tokenType == TokenType.ERC20) {
-            if (tokenInfo.tokenAddress == address(0)) {
-                require(
-                    from == msg.sender || from == address(this),
-                    "NftMarketplaceV2: Wrong from"
-                );
-                if (from == msg.sender) {
-                    require(tokenInfo.amount == msg.value, "NftMarketplaceV2: Wrong amount");
-
-                    if (to != address(this)) {
-                        uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_NATIVE_TRANSFER : gasleft();
-                        (bool success, bytes memory data) = to.call{
-                            value: tokenInfo.amount,
-                            gas: gasLimit
-                        }("");
-                        if (requireSuccess) {
-                            require(success, "NftMarketplaceV2: Transfer native");
-                        }
-                        if (!success) {
-                            emit BadTokenTransfer(
-                                to,
-                                tokenInfo.tokenAddress,
-                                tokenInfo.tokenType,
-                                tokenInfo.id,
-                                tokenInfo.amount,
-                                _getRevertMsg(data)
-                            );
-                        }
-                    }
-                } else {
-                    require(
-                        address(this).balance >= tokenInfo.amount,
-                        "NftMarketplaceV2: Not enough native balance"
-                    );
-                    uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_NATIVE_TRANSFER : gasleft();
-                    (bool success, bytes memory data) = to.call{
-                        value: tokenInfo.amount,
-                        gas: gasLimit
-                    }("");
-                    if (requireSuccess) {
-                        require(success, "NftMarketplaceV2: Transfer native");
-                    }
-                    if (!success) {
-                        emit BadTokenTransfer(
-                            to,
-                            tokenInfo.tokenAddress,
-                            tokenInfo.tokenType,
-                            tokenInfo.id,
-                            tokenInfo.amount,
-                            _getRevertMsg(data)
-                        );
-                    }
-                }
-            } else {
-                if (from == msg.sender) {
-                    require(msg.value == 0, "NftMarketplaceV2: Not native, need no value");
-                }
-                if (from == address(this)) {
-                    uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_TOKEN_TRANSFER : gasleft();
-                    (bool success, bytes memory data) = tokenInfo.tokenAddress.call{gas: gasLimit}(
-                        abi.encodeWithSelector(IERC20.transfer.selector, to, tokenInfo.amount)
-                    );
-                    bool isSucceeded = _checkTransferResult(success, data);
-                    if (requireSuccess) {
-                        require(
-                            isSucceeded,
-                            success
-                                ? "NftMarketplaceV2: ERC20 transfer result false"
-                                : _getRevertMsg(data)
-                        );
-                    } else if (!isSucceeded) {
-                        string memory errorMessage = success
-                            ? "NftMarketplaceV2: ERC20 transfer result false"
-                            : _getRevertMsg(data);
-                        emit BadTokenTransfer(
-                            to,
-                            tokenInfo.tokenAddress,
-                            tokenInfo.tokenType,
-                            tokenInfo.id,
-                            tokenInfo.amount,
-                            errorMessage
-                        );
-                    }
-                } else {
-                    uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_TOKEN_TRANSFER : gasleft();
-                    (bool success, bytes memory data) = tokenInfo.tokenAddress.call{gas: gasLimit}(
-                        abi.encodeWithSelector(
-                            IERC20.transferFrom.selector,
-                            from,
-                            to,
-                            tokenInfo.amount
-                        )
-                    );
-                    bool isSucceeded = _checkTransferResult(success, data);
-                    if (requireSuccess) {
-                        require(
-                            isSucceeded,
-                            success
-                                ? "NftMarketplaceV2: ERC20 transfer result false"
-                                : _getRevertMsg(data)
-                        );
-                    } else if (!isSucceeded) {
-                        string memory errorMessage = success
-                            ? "NftMarketplaceV2: ERC20 transferFrom result false"
-                            : _getRevertMsg(data);
-                        emit BadTokenTransfer(
-                            to,
-                            tokenInfo.tokenAddress,
-                            tokenInfo.tokenType,
-                            tokenInfo.id,
-                            tokenInfo.amount,
-                            errorMessage
-                        );
-                    }
-                }
-            }
-        } else if (tokenInfo.tokenType == TokenType.ERC721) {
+        if (tokenInfo.tokenType == TokenType.ERC721) {
             uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_TOKEN_TRANSFER : gasleft();
             (bool success, bytes memory data) = tokenInfo.tokenAddress.call{gas: gasLimit}(
                 abi.encodeWithSignature(
@@ -687,73 +658,118 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
         }
     }
 
-    function _tokenTransferWithFee(
-        TokenInfo memory tokenInfo,
+    function _transferNative(
         address from,
         address to,
+        uint256 amount,
+        bool requireSuccess,
+        bool setGasLimit
+    ) private {
+        require(from == msg.sender || from == address(this), "NftMarketplaceV2: Wrong from");
+        if (from == msg.sender) {
+            require(amount == msg.value, "NftMarketplaceV2: Wrong amount");
+
+            if (to != address(this)) {
+                uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_NATIVE_TRANSFER : gasleft();
+                (bool success, bytes memory data) = to.call{value: amount, gas: gasLimit}("");
+                if (requireSuccess) {
+                    require(success, "NftMarketplaceV2: Transfer native");
+                }
+                if (!success) {
+                    emit BadTokenTransfer(
+                        to,
+                        _ETH_ADDRESS,
+                        TokenType.ERC20,
+                        0,
+                        amount,
+                        _getRevertMsg(data)
+                    );
+                }
+            }
+        } else {
+            require(address(this).balance >= amount, "NftMarketplaceV2: Not enough native balance");
+            uint256 gasLimit = setGasLimit ? _MAX_GAS_FOR_NATIVE_TRANSFER : gasleft();
+            (bool success, bytes memory data) = to.call{value: amount, gas: gasLimit}("");
+            if (requireSuccess) {
+                require(success, "NftMarketplaceV2: Transfer native");
+            }
+            if (!success) {
+                emit BadTokenTransfer(
+                    to,
+                    _ETH_ADDRESS,
+                    TokenType.ERC20,
+                    0,
+                    amount,
+                    _getRevertMsg(data)
+                );
+            }
+        }
+    }
+
+    function _transferERC20WithFee(
+        address token,
+        address from,
+        address to,
+        uint256 amount,
         address royaltyReceiver,
         uint256 royaltyAmount
     ) private {
-        if (tokenInfo.tokenType == TokenType.ERC20) {
-            uint256 feeAmount = (tokenInfo.amount * feePercentage) / 100_00;
+        uint256 feeAmount = (amount * feePercentage) / 100_00;
 
-            // not more than 50%
-            if (royaltyAmount > tokenInfo.amount / 2) {
-                royaltyAmount = tokenInfo.amount / 2;
-            }
+        // not more than 50%
+        if (royaltyAmount > amount / 2) {
+            royaltyAmount = amount / 2;
+        }
 
-            uint256 transferAmount = tokenInfo.amount - feeAmount - royaltyAmount;
-            if (transferAmount > 0) {
-                _tokenTransfer(
-                    TokenInfo({
-                        tokenType: TokenType.ERC20,
-                        tokenAddress: tokenInfo.tokenAddress,
-                        id: 0,
-                        amount: transferAmount
-                    }),
-                    from,
-                    to,
-                    true,
-                    false
-                );
-            }
+        uint256 transferAmount = amount - feeAmount - royaltyAmount;
+        if (transferAmount > 0) {
+            _transferERC20(token, from, to, transferAmount, true, false);
+        }
 
-            if (feeAmount > 0) {
-                address _feeReceiver = feeReceiver;
-                _tokenTransfer(
-                    TokenInfo({
-                        tokenType: TokenType.ERC20,
-                        tokenAddress: tokenInfo.tokenAddress,
-                        id: 0,
-                        amount: feeAmount
-                    }),
-                    from,
-                    _feeReceiver,
-                    true,
-                    false
-                );
+        if (feeAmount > 0) {
+            address _feeReceiver = feeReceiver;
+            _transferERC20(token, from, _feeReceiver, feeAmount, true, false);
 
-                emit FeeTransferred(_feeReceiver, tokenInfo.tokenAddress, feeAmount);
-            }
+            emit FeeTransferred(_feeReceiver, token, feeAmount);
+        }
 
-            if (royaltyAmount > 0) {
-                _tokenTransfer(
-                    TokenInfo({
-                        tokenType: TokenType.ERC20,
-                        tokenAddress: tokenInfo.tokenAddress,
-                        id: 0,
-                        amount: royaltyAmount
-                    }),
-                    from,
-                    royaltyReceiver,
-                    true,
-                    false
-                );
+        if (royaltyAmount > 0) {
+            _transferERC20(token, from, royaltyReceiver, royaltyAmount, true, false);
 
-                emit RoyaltyTransferred(royaltyReceiver, tokenInfo.tokenAddress, royaltyAmount);
-            }
-        } else {
-            _tokenTransfer(tokenInfo, from, to, true, false);
+            emit RoyaltyTransferred(royaltyReceiver, token, royaltyAmount);
+        }
+    }
+
+    function _transferNativeWithFee(
+        address from,
+        address to,
+        uint256 amount,
+        address royaltyReceiver,
+        uint256 royaltyAmount
+    ) private {
+        uint256 feeAmount = (amount * feePercentage) / 100_00;
+
+        // not more than 50%
+        if (royaltyAmount > amount / 2) {
+            royaltyAmount = amount / 2;
+        }
+
+        uint256 transferAmount = amount - feeAmount - royaltyAmount;
+        if (transferAmount > 0) {
+            _transferNative(from, to, transferAmount, true, false);
+        }
+
+        if (feeAmount > 0) {
+            address _feeReceiver = feeReceiver;
+            _transferNative(from, _feeReceiver, feeAmount, true, false);
+
+            emit FeeTransferred(_feeReceiver, _ETH_ADDRESS, feeAmount);
+        }
+
+        if (royaltyAmount > 0) {
+            _transferNative(from, royaltyReceiver, royaltyAmount, true, false);
+
+            emit RoyaltyTransferred(royaltyReceiver, _ETH_ADDRESS, royaltyAmount);
         }
     }
 
@@ -789,7 +805,6 @@ contract NftMarketplaceV2 is RoyaltiesInfo, ERC721Holder, ERC1155Holder, Reentra
                     _auctionData.seller,
                     _auctionData.startTime,
                     _auctionData.endTime,
-                    _auctionData.minPrice,
                     _auctionData.bidToken
                 )
             );

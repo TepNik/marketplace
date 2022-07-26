@@ -1,3 +1,5 @@
+import { HardhatUserConfig } from "hardhat/config";
+
 import "@nomicfoundation/hardhat-chai-matchers";
 
 // Automatic verification on etherscan, bscscan and others
@@ -91,7 +93,6 @@ module.exports = {
     },
     mocha: {
         timeout: 100000,
-        //parallel: true,
     },
     contractSizer: {
         alphaSort: true,
@@ -102,6 +103,7 @@ module.exports = {
         currency: "USD",
         coinmarketcap: config.coinmarketcapApi,
         token: "BNB",
+        excludeContracts: ["test/"],
     },
     abiExporter: {
         path: "./data/abi",
@@ -119,4 +121,4 @@ module.exports = {
         pages: "items",
         exclude: ["test/"],
     },
-};
+} as HardhatUserConfig;

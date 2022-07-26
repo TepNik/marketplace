@@ -12,13 +12,21 @@ struct RoyaltyInfo {
 }
 ```
 
+### ROYALTY_MANAGER
+
+```solidity
+bytes32 ROYALTY_MANAGER
+```
+
+Role that manages royalties info
+
 ### royaltiesInfo
 
 ```solidity
 mapping(address => struct RoyaltiesInfo.RoyaltyInfo) royaltiesInfo
 ```
 
-Holds an information about royalties that are set by an admin.
+Holds information about royalties that are set by an admin.
 Can be changed in functions setRoyalty() and disableAdminRoyalty().
 
 ### defaultFeeForOwner
@@ -36,7 +44,7 @@ Can be changed in setDefaultFeeForOwner() function.
 event AddedAdminRoyalty(address manager, address token, address royaltyReceiver, uint16 royaltyPercentage)
 ```
 
-Event is emmited when an admin of the contract (`manager`) has added a new royalty config (`royaltyReceiver` will receive `royaltyPercentage` percentages) for a collection `token`.
+Event is emitted when an admin of the contract (`manager`) has added a new royalty config (`royaltyReceiver` will receive `royaltyPercentage` percentages) for a collection `token`.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -51,7 +59,7 @@ Event is emmited when an admin of the contract (`manager`) has added a new royal
 event DisabledAdminRoyalty(address manager, address token)
 ```
 
-Event is emmited when an admin of the contract (`manager`) has deleted royalty config for a collection `token`.
+Event is emitted when an admin of the contract (`manager`) has deleted royalty config for a collection `token`.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -64,7 +72,7 @@ Event is emmited when an admin of the contract (`manager`) has deleted royalty c
 event ChangedDefaultFeeForOwner(address manager, uint256 oldValue, uint256 newValue)
 ```
 
-Event is emmited when an admin of the contract (`manager`) has changed value for defaultFeeForOwner variable from `oldValue` to `newValue`.
+Event is emitted when an admin of the contract (`manager`) has changed value for defaultFeeForOwner variable from `oldValue` to `newValue`.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -84,7 +92,7 @@ constructor() public
 function setRoyalty(address token, address royaltyReceiver, uint16 royaltyPercentage) external
 ```
 
-Admin function for setting royalty config for a collection `token`.
+Admin function (ROYALTY_MANAGER role) for setting royalty config for a collection `token`.
 
 _Changes mapping royaltiesInfo._
 
@@ -100,7 +108,7 @@ _Changes mapping royaltiesInfo._
 function setDefaultFeeForOwner(uint16 newValue) external
 ```
 
-Admin function for setting new value (`newValue`) for defaultFeeForOwner variable.
+Admin function (ROYALTY_MANAGER role) for setting new value (`newValue`) for defaultFeeForOwner variable.
 
 _Changes variable defaultFeeForOwner._
 
@@ -114,7 +122,7 @@ _Changes variable defaultFeeForOwner._
 function disableAdminRoyalty(address token) external
 ```
 
-Admin function for deleting royaly config for a collection `token`.
+Admin function (ROYALTY_MANAGER role) for deleting royalty config for a collection `token`.
 
 _Changes mapping royaltiesInfo._
 
@@ -145,5 +153,5 @@ If a collection doesn't have any of these items, there will be no royalties for 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | royaltyReceiver | address | Address that will receive royalties for collection `token`. |
-| royaltyAmount | uint256 | Amount of royaly in tokens. |
+| royaltyAmount | uint256 | Amount of royalty in tokens. |
 

@@ -17,7 +17,6 @@ export function compareAuctionDataWithRaw(
     expect(auctionDataRaw.seller).equals(auctionData.seller);
     expect(auctionDataRaw.startTime).equals(auctionData.startTime);
     expect(auctionDataRaw.endTime).equals(auctionData.endTime);
-    expect(auctionDataRaw.minPrice).equals(auctionData.minPrice);
     expect(auctionDataRaw.bidToken).equals(auctionData.bidToken);
     expect(auctionDataRaw.lastBidAmount).equals(auctionData.lastBidAmount);
     expect(auctionDataRaw.lastBidder).equals(auctionData.lastBidder);
@@ -29,7 +28,6 @@ export function getAuctionId(auctionData: AuctionData): string {
         auctionData.seller,
         auctionData.startTime,
         auctionData.endTime,
-        auctionData.minPrice,
         auctionData.bidToken
     );
 }
@@ -39,11 +37,10 @@ export function getAuctionIdRaw(
     seller: string,
     startTime: number,
     endTime: number,
-    minPrice: BigNumber,
     bidToken: string
 ): string {
     const encodeData = ethers.utils.defaultAbiCoder.encode(
-        ["(uint8,address,uint256,uint256)", "address", "uint128", "uint128", "uint256", "address"],
+        ["(uint8,address,uint256,uint256)", "address", "uint128", "uint128", "address"],
         [
             [
                 tokenTypeToNumber(tokenInfo.tokenType),
@@ -54,7 +51,6 @@ export function getAuctionIdRaw(
             seller,
             startTime,
             endTime,
-            minPrice.toString(),
             bidToken,
         ]
     );

@@ -31,12 +31,19 @@ struct AuctionData {
   address seller;
   uint32 startTime;
   uint32 endTime;
-  uint256 minPrice;
   address bidToken;
   uint256 lastBidAmount;
   address lastBidder;
 }
 ```
+
+### AUCTION_MANAGER
+
+```solidity
+bytes32 AUCTION_MANAGER
+```
+
+Role that manages auctions
 
 ### isPausedCreation
 
@@ -94,6 +101,12 @@ uint256 _MAX_GAS_FOR_NATIVE_TRANSFER
 
 ```solidity
 uint256 _MAX_GAS_FOR_TOKEN_TRANSFER
+```
+
+### _ETH_ADDRESS
+
+```solidity
+address _ETH_ADDRESS
 ```
 
 ### FeeTransferred
@@ -167,7 +180,7 @@ The event is emitted when `user` creates a new auction (`auctionId`) to sell his
 | startTime | uint256 | Time when the auction will start |
 | endTime | uint256 | Time when the auction will end |
 | minPrice | uint256 | Minimum price in token `bidToken` |
-| bidToken | address | Address of a token that will be accepted for a bid (0x0 address is used for the native token) |
+| bidToken | address | Address of a token that will be accepted for a bid (0xeee address is used for the native token) |
 | auctionId | bytes32 | Unique identifier for this new auction |
 
 ### BidMade
@@ -182,7 +195,7 @@ The event is emitted when `user` makes a bid on the auction (`auctionId`).
 | ---- | ---- | ----------- |
 | auctionId | bytes32 | Auction identifier for which `user` makes a bid |
 | user | address | User that makes a bid |
-| bidToken | address | Address of the token that bids `user` (0x0 address is used for the native token) |
+| bidToken | address | Address of the token that bids `user` (0xeee address is used for the native token) |
 | bidAmount | uint256 | Amount of the bid |
 
 ### BidRefund
@@ -197,7 +210,7 @@ The event is emitted when to the auction (`auctionId`) comes a new bid with a bi
 | ---- | ---- | ----------- |
 | auctionId | bytes32 | Auction identifier in which `user` made the bid |
 | user | address | User that gets his bid back |
-| bidToken | address | Address of the token that will be refunded to the `user` (0x0 address is used for the native token) |
+| bidToken | address | Address of the token that will be refunded to the `user` (0xeee address is used for the native token) |
 | bidAmount | uint256 | Amount of refund |
 
 ### AuctionCalceled
@@ -230,7 +243,7 @@ The event is emitted when the auction (`auctionId`) was successfully closed.
 | seller | address | User that sells NFT |
 | buyer | address | User that buys NFT |
 | tokenInfoSell | struct NftMarketplaceV2.TokenInfo | Token info for NFT |
-| tokenInfoBid | struct NftMarketplaceV2.TokenInfo | Token info for bid token (0x0 address is used for the native token) |
+| tokenInfoBid | struct NftMarketplaceV2.TokenInfo | Token info for bid token (0xeee address is used for the native token) |
 
 ### PauseToggled
 
@@ -316,22 +329,32 @@ Create a new auction.
 | startTime | uint32 | Time when this auction will start |
 | endTime | uint32 | Time when this auction will end |
 | minPrice | uint256 | Minimum price for this NFT |
-| bidToken | address | Address of the token that will be accepted for bids (0x0 address is used for the native token) |
+| bidToken | address | Address of the token that will be accepted for bids (0xeee address is used for the native token) |
 
 ### bid
 
 ```solidity
-function bid(bytes32 auctionId, uint256 amount) external payable
+function bid(bytes32 auctionId, uint256 amount) external
 ```
 
 Make a bid to the auction with id `auctionId`.
-If auction has (bidToken == 0x0) then `amount` should be added to the value of tx
-else the value of tx should be zero.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | auctionId | bytes32 | Auction identifier to which the bid will be made |
 | amount | uint256 | Amount of the bid |
+
+### bidNative
+
+```solidity
+function bidNative(bytes32 auctionId) external payable
+```
+
+Make a bid with native token to the auction with id `auctionId`.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| auctionId | bytes32 | Auction identifier to which the bid will be made |
 
 ### endAuction
 
@@ -347,29 +370,18 @@ If there is a bid, an auction will be processed.
 | ---- | ---- | ----------- |
 | auctionId | bytes32 | Auction identifier that will be ended |
 
-### setFeePercentage
+### setFeeInfo
 
 ```solidity
-function setFeePercentage(uint256 newValue) external
+function setFeeInfo(uint256 newValueFeePercentage, address newValueFeeReceiver) external
 ```
 
-Admin function for setting a new value for fee percentages of the marketplace.
+Admin function (AUCTION_MANAGER role) for setting new values for fee percentages and fee receiver of the marketplace.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| newValue | uint256 | New value of the marketplace fee percentages |
-
-### setFeeReceiver
-
-```solidity
-function setFeeReceiver(address newValue) external
-```
-
-Admin function for setting a new value for the marketplace's fee receiver.
-
-| Name | Type | Description |
-| ---- | ---- | ----------- |
-| newValue | address | New value of the marketplace's fee receiver |
+| newValueFeePercentage | uint256 | New value of the marketplace fee percentages |
+| newValueFeeReceiver | address | New value of the marketplace fee receiver |
 
 ### deleteAuction
 
@@ -377,7 +389,7 @@ Admin function for setting a new value for the marketplace's fee receiver.
 function deleteAuction(bytes32 auctionId, bool requireSuccessSeller, bool setGasLimitForSellerTransfer, bool requireSuccessBuyer, bool setGasLimitForBuyerTransfer) external
 ```
 
-Admin function for deleting auction (`auctionId`) is case of
+Admin function (AUCTION_MANAGER role) for deleting auction (`auctionId`) is case of
 wrong parameters and if NFT or a bid token reverts token transfer (or gas ddos).
 
 | Name | Type | Description |
@@ -394,7 +406,7 @@ wrong parameters and if NFT or a bid token reverts token transfer (or gas ddos).
 function togglePause() external
 ```
 
-Admin function for pausing/unpausing creation of auctions on the marketplace.
+Admin function (AUCTION_MANAGER role) for pausing/unpausing creation of auctions on the marketplace.
 
 ### activeAuctionsLength
 
@@ -448,16 +460,34 @@ function supportsInterface(bytes4 interfaceId) public view virtual returns (bool
 
 The function of the ERC165 standard.
 
-### _tokenTransfer
+### _transferERC20
 
 ```solidity
-function _tokenTransfer(struct NftMarketplaceV2.TokenInfo tokenInfo, address from, address to, bool requireSuccess, bool setGasLimit) private
+function _transferERC20(address token, address from, address to, uint256 amount, bool requireSuccess, bool setGasLimit) private
 ```
 
-### _tokenTransferWithFee
+### _transferNFT
 
 ```solidity
-function _tokenTransferWithFee(struct NftMarketplaceV2.TokenInfo tokenInfo, address from, address to, address royaltyReceiver, uint256 royaltyAmount) private
+function _transferNFT(struct NftMarketplaceV2.TokenInfo tokenInfo, address from, address to, bool requireSuccess, bool setGasLimit) private
+```
+
+### _transferNative
+
+```solidity
+function _transferNative(address from, address to, uint256 amount, bool requireSuccess, bool setGasLimit) private
+```
+
+### _transferERC20WithFee
+
+```solidity
+function _transferERC20WithFee(address token, address from, address to, uint256 amount, address royaltyReceiver, uint256 royaltyAmount) private
+```
+
+### _transferNativeWithFee
+
+```solidity
+function _transferNativeWithFee(address from, address to, uint256 amount, address royaltyReceiver, uint256 royaltyAmount) private
 ```
 
 ### _verifyToken
