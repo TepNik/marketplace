@@ -35,7 +35,7 @@ contract NftMarketplace is RoyaltiesInfo, EIP712 {
 
     uint256 private constant MAX_GAS_FOR_NATIVE_TRANSFER = 200_000;
 
-    /// @notice Event is emmited when an order is completed.
+    /// @notice Event is emitted when an order is completed.
     /// @param signatureInfo Info about an order. More info about this structure can be found in makeSwap() function.
     /// @param seller Address that sold their tokens.
     /// @param buyer This address signed the swap transaction.
@@ -47,13 +47,13 @@ contract NftMarketplace is RoyaltiesInfo, EIP712 {
         bytes32 orderId
     );
 
-    /// @notice Event is emmited when fees of the marketplace were transferred.
+    /// @notice Event is emitted when fees of the marketplace were transferred.
     /// @param feeReceiver Address that received fees.
     /// @param token Address of a token that was transfered.
     /// @param amount Fee amount.
     event FeeTransferred(address indexed feeReceiver, address indexed token, uint256 amount);
 
-    /// @notice Event is emmited when royalties were transferred.
+    /// @notice Event is emitted when royalties were transferred.
     /// @param royaltyReceiver Address that received royalties.
     /// @param token Address of a token that was transfered.
     /// @param amount Royalty amount.
@@ -63,12 +63,12 @@ contract NftMarketplace is RoyaltiesInfo, EIP712 {
         uint256 amount
     );
 
-    /// @notice Event is emmited when an admin (`manager`) has set new fee percentages for the marketplace.
+    /// @notice Event is emitted when an admin (`manager`) has set new fee percentages for the marketplace.
     /// @param manager Address of the admin that has changed fee percentages for the marketplace.
     /// @param oldValue Previous value of fee percentages for the marketplace.
     /// @param newValue New value of fee percentages for the marketplace.
     event FeePercentageChange(address indexed manager, uint256 oldValue, uint256 newValue);
-    /// @notice Event is emmited when an admin (`manager`) has set new fee receiver for the marketplace.
+    /// @notice Event is emitted when an admin (`manager`) has set new fee receiver for the marketplace.
     /// @param manager Address of an admin that has changed fee receiver for the marketplace.
     /// @param oldValue Previous fee receiver of the marketplace.
     /// @param newValue New fee receiver of the marketplace.
@@ -78,10 +78,10 @@ contract NftMarketplace is RoyaltiesInfo, EIP712 {
         address indexed newValue
     );
 
-    /// @notice Event is emmited when an admin (`manager`) has paused the marketplace.
+    /// @notice Event is emitted when an admin (`manager`) has paused the marketplace.
     /// @param manager Address of an admin that has paused the marketplace.
     event SwapsPaused(address indexed manager);
-    /// @notice Event is emmited when an admin (`manager`) has unpaused the marketplace.
+    /// @notice Event is emitted when an admin (`manager`) has unpaused the marketplace.
     /// @param manager Address of an admin that has unpaused the marketplace.
     event SwapsUnpaused(address indexed manager);
 
