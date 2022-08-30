@@ -880,7 +880,7 @@ describe("NFT Marketplace tests", function () {
                 { name: "isTokenToGiveMulti", type: "bool" },
                 { name: "tokenToGet", type: "TokenInfo" },
                 { name: "tokenToGive", type: "TokenInfo" },
-                { name: "deadline", type: "uint256" },
+                { name: "closeDate", type: "uint256" },
             ],
         };
 
@@ -900,7 +900,7 @@ describe("NFT Marketplace tests", function () {
                 id: info[4][2],
                 amount: info[4][3],
             },
-            deadline: info[5],
+            closeDate: info[5],
         };
 
         const encodedSignatureInfo = ethers.utils.defaultAbiCoder.encode(

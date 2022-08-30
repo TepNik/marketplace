@@ -34,7 +34,7 @@ contract EIP712 {
         bool isTokenToGiveMulti;
         TokenInfo tokenToGet;
         TokenInfo tokenToGive;
-        uint256 deadline;
+        uint256 closeDate;
     }
 
     bytes32 private constant EIP712DOMAIN_TYPEHASH =
@@ -47,7 +47,7 @@ contract EIP712 {
 
     bytes32 private constant SIGNATURE_INFO_TYPEHASH =
         keccak256(
-            "SignatureInfo(address sellerAddress,bool isTokenToGetMulti,bool isTokenToGiveMulti,TokenInfo tokenToGet,TokenInfo tokenToGive,uint256 deadline)TokenInfo(uint8 tokenType,address tokenAddress,uint256 id,uint256 amount)"
+            "SignatureInfo(address sellerAddress,bool isTokenToGetMulti,bool isTokenToGiveMulti,TokenInfo tokenToGet,TokenInfo tokenToGive,uint256 closeDate)TokenInfo(uint8 tokenType,address tokenAddress,uint256 id,uint256 amount)"
         );
 
     bytes32 private immutable DOMAIN_SEPARATOR;
@@ -103,7 +103,7 @@ contract EIP712 {
                     signatureInfo.isTokenToGiveMulti,
                     _hash(signatureInfo.tokenToGet),
                     _hash(signatureInfo.tokenToGive),
-                    signatureInfo.deadline
+                    signatureInfo.closeDate
                 )
             );
     }
@@ -113,7 +113,7 @@ contract EIP712 {
         bytes calldata sellerSignature,
         address sellerAddress
     ) internal view returns (bytes32 orderId) {
-        require(block.timestamp <= signatureInfoSeller.deadline, "NftMarketplace: Deadline error");
+        require(block.timestamp <= signatureInfoSeller.closeDate, "NftMarketplace: Deadline error");
         require(
             signatureInfoSeller.sellerAddress == sellerAddress,
             "NftMarketplace: Wrong user in signature info"
