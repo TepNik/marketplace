@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 
-pragma solidity 0.8.15;
+pragma solidity 0.8.16;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
@@ -29,7 +29,7 @@ contract EIP712 {
     }
 
     struct SignatureInfo {
-        address user;
+        address sellerAddress;
         bool isTokenToGetMulti;
         bool isTokenToGiveMulti;
         TokenInfo tokenToGet;
@@ -47,7 +47,7 @@ contract EIP712 {
 
     bytes32 private constant SIGNATURE_INFO_TYPEHASH =
         keccak256(
-            "SignatureInfo(address user,bool isTokenToGetMulti,bool isTokenToGiveMulti,TokenInfo tokenToGet,TokenInfo tokenToGive,uint256 deadline)TokenInfo(uint8 tokenType,address tokenAddress,uint256 id,uint256 amount)"
+            "SignatureInfo(address sellerAddress,bool isTokenToGetMulti,bool isTokenToGiveMulti,TokenInfo tokenToGet,TokenInfo tokenToGive,uint256 deadline)TokenInfo(uint8 tokenType,address tokenAddress,uint256 id,uint256 amount)"
         );
 
     bytes32 private immutable DOMAIN_SEPARATOR;
@@ -98,7 +98,7 @@ contract EIP712 {
             keccak256(
                 abi.encode(
                     SIGNATURE_INFO_TYPEHASH,
-                    signatureInfo.user,
+                    signatureInfo.sellerAddress,
                     signatureInfo.isTokenToGetMulti,
                     signatureInfo.isTokenToGiveMulti,
                     _hash(signatureInfo.tokenToGet),
@@ -115,7 +115,7 @@ contract EIP712 {
     ) internal view returns (bytes32 orderId) {
         require(block.timestamp <= signatureInfoSeller.deadline, "NftMarketplace: Deadline error");
         require(
-            signatureInfoSeller.user == sellerAddress,
+            signatureInfoSeller.sellerAddress == sellerAddress,
             "NftMarketplace: Wrong user in signature info"
         );
 

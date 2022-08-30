@@ -875,7 +875,7 @@ describe("NFT Marketplace tests", function () {
                 { name: "amount", type: "uint256" },
             ],
             SignatureInfo: [
-                { name: "user", type: "address" },
+                { name: "sellerAddress", type: "address" },
                 { name: "isTokenToGetMulti", type: "bool" },
                 { name: "isTokenToGiveMulti", type: "bool" },
                 { name: "tokenToGet", type: "TokenInfo" },
@@ -885,7 +885,7 @@ describe("NFT Marketplace tests", function () {
         };
 
         const value = {
-            user: info[0],
+            sellerAddress: info[0],
             isTokenToGetMulti: info[1],
             isTokenToGiveMulti: info[2],
             tokenToGet: {
@@ -911,6 +911,7 @@ describe("NFT Marketplace tests", function () {
         );
         const orderId = ethers.utils.keccak256(ethers.utils.arrayify(encodedSignatureInfo));
         const signature = await user._signTypedData(domain, types, value);
+        //const signature = "0x0";
 
         return [signature, orderId];
     }

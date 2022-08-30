@@ -17,6 +17,13 @@ async function main() {
 
     const wNativeAddress = config.networks[networkName].wNative;
     const feeReceiverAddress = config.networks[networkName].feeReceiver;
+    if (
+        !hre.ethers.utils.isAddress(wNativeAddress) ||
+        !hre.ethers.utils.isAddress(feeReceiverAddress)
+    ) {
+        console.log("Wrong constructor params");
+        return;
+    }
 
     const [deployer] = await ethers.getSigners();
     console.log("Deployer address:", deployer.address);

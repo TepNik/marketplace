@@ -40,39 +40,39 @@ module.exports = {
         hardhat: {},
         ethereumMainnet: {
             url: "https://rinkeby.infura.io/v3/" + config.infuraIdProject,
-            accounts: config.mainnetAccounts,
+            accounts: config.mainnetAccountsPK,
         },
         ropsten: {
             url: "https://ropsten.infura.io/v3/" + config.infuraIdProject,
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
         kovan: {
             url: "https://kovan.infura.io/v3/" + config.infuraIdProject,
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
         rinkeby: {
             url: "https://rinkeby.infura.io/v3/" + config.infuraIdProject,
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
         goerli: {
             url: "https://goerli.infura.io/v3/" + config.infuraIdProject,
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
         bscMainnet: {
             url: "https://bsc-dataseed3.binance.org",
-            accounts: config.mainnetAccounts,
+            accounts: config.mainnetAccountsPK,
         },
         bscTestnet: {
             url: "https://data-seed-prebsc-1-s1.binance.org:8545",
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
         polygonMainnet: {
             url: "https://rpc-mainnet.maticvigil.com",
-            accounts: config.mainnetAccounts,
+            accounts: config.mainnetAccountsPK,
         },
         polygonTestnet: {
             url: "https://matic-mumbai.chainstacklabs.com",
-            accounts: config.testnetAccounts,
+            accounts: config.testnetAccountsPK,
         },
     },
     etherscan: {
@@ -81,7 +81,7 @@ module.exports = {
     solidity: {
         compilers: [
             {
-                version: "0.8.15",
+                version: "0.8.16",
                 settings: {
                     optimizer: {
                         enabled: true,
